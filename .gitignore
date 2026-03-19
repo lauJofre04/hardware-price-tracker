@@ -1,0 +1,15 @@
+# Dependencias
+node_modules/
+/backend/node_modules/
+/frontend/node_modules/
+
+# Variables de entorno (¡SECRETOS!)
+.env
+/backend/.env
+/frontend/.env
+
+# Archivos de build y logs
+dist/
+build/
+npm-debug.log*
+.DS_Store
