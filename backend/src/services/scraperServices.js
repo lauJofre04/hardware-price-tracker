@@ -69,9 +69,9 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
             const resAnterior = await pool.query(`SELECT last_price FROM product_shop_links WHERE id = $1`, [linkId]);
             const precioAnterior = resAnterior.rows[0]?.last_price;
 
-            // 2. Si hay precio anterior y el nuevo es MENOR, disparamos la alerta
-            if (precioAnterior && precioLimpio < precioAnterior) {
-                console.log(`🚨 OFERTA DETECTADA: Bajó de $${precioAnterior} a $${precioLimpio}`);
+            // 2. Si hay precio anterior y el nuevo es DISTINTO (subió o bajó), disparamos la alerta
+            if (precioAnterior && Number(precioLimpio) !== Number(precioAnterior)) {
+                console.log(`🚨 CAMBIO DE PRECIO DETECTADO: De $${precioAnterior} a $${precioLimpio}`);
                 await enviarAlertaTelegram(productName, shopName, precioAnterior, precioLimpio, url);
             }
 
@@ -79,7 +79,7 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
             await pool.query(`INSERT INTO price_history (product_shop_id, price) VALUES ($1, $2)`, [linkId, precioLimpio]);
             await pool.query(`UPDATE product_shop_links SET last_price = $1 WHERE id = $2`, [precioLimpio, linkId]);
             
-            return precioLimpio;
+            return precioLimpio;s
         }
 
     } catch (error) {
