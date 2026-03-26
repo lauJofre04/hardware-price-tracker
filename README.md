@@ -79,6 +79,18 @@ npm install
 npm run dev
 \`\`\`
 
+
+## Capturas de la pagina Web
+
+### 1. Pagina Principal
+
+<img width="1341" height="682" alt="Image" src="https://github.com/user-attachments/assets/72b69294-96e5-405e-babb-067964d14b57" />
+
+### 2. Card Produto
+<img width="368" height="523" alt="Image" src="https://github.com/user-attachments/assets/32a6d481-ca8f-46da-ac54-42344036310a" />
+
+### 3. Grafico Precio Producto
+<img width="623" height="166" alt="Image" src="https://github.com/user-attachments/assets/529f68c6-289a-4b29-9c22-52eb63292657" />
 ## 👨‍💻 Autor
 
 **Lautaro Jofre**
