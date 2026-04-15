@@ -169,8 +169,14 @@ function App() {
     }
   };
   // Función para iniciar sesión
+    // Función para iniciar sesión
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 1. Damos feedback visual al instante y bloqueamos clics repetidos
+    toast.loading('Despertando al servidor y validando...', { id: 'login-toast' });
+    console.log('Enviando petición a:', import.meta.env.VITE_API_URL);
+
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
         method: 'POST',
@@ -178,19 +184,22 @@ function App() {
         body: JSON.stringify(loginData)
       });
       const data = await res.json();
-      
+
       if (res.ok) {
-        localStorage.setItem('token', data.token); // Lo guardamos en el navegador
-        setToken(data.token); // Actualizamos el estado de React
+        toast.success('¡Sesión iniciada!', { id: 'login-toast' }); // Reemplaza el loading
+        localStorage.setItem('token', data.token);
+        setToken(data.token);
         setShowLogin(false);
         setLoginData({ username: '', password: '' });
       } else {
-        toast.error(data.error || 'Credenciales incorrectas');
+        toast.error(data.error || 'Credenciales incorrectas', { id: 'login-toast' });
       }
     } catch (error) {
       console.error('Error al iniciar sesión:', error);
+      toast.error('Error de conexión con el servidor.', { id: 'login-toast' });
     }
   };
+
 
   // Función para cerrar sesión
   const handleLogout = () => {
