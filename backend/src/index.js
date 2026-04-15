@@ -37,7 +37,14 @@ cron.schedule('0 3 * * *', () => {
 });
 
 // Middlewares
-app.use(cors()); // Permite peticiones desde el frontend
+app.use(cors({
+  origin: [
+    'http://localhost:5173', // Para cuando programás en tu compu
+    'https://hardware-price-tracker-eight.vercel.app' // Tu página en producción
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'] // ¡CLAVE PARA QUE PASE EL TOKEN!
+})); // Permite peticiones desde el frontend
 app.use(express.json()); // Permite recibir datos en formato JSON
 
 // Ruta para iniciar sesión y obtener el Token
