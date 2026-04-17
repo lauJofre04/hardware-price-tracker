@@ -54,7 +54,7 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
             const el = page.locator('span[class*="tw:text-price"]').filter({ hasText: /[0-9]/ }).first();
-            await el.waitFor({ state: 'visible', timeout: 5000 });
+            await el.waitFor({ state: 'visible', timeout: 15000 });
             const text = await el.innerText();
             precioLimpio = parseInt(text.replace(/[^0-9]/g, ''), 10);
         }
