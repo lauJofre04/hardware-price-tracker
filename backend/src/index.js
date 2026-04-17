@@ -18,22 +18,18 @@ const verificarToken = require('./middleware/auth'); // Nuestro guardia
 // TAREAS AUTOMÁTICAS (CRON JOBS)
 // ==========================================
 
-// Este formato '0 3 * * *' significa: "Ejecutar todos los días a las 03:00 AM"
-// Para probarlo AHORA MISMO, podés usar '*/2 * * * *' (se ejecuta cada 2 minutos)
-cron.schedule('0 3 * * *', () => {
-    console.log('⏰ [CRON] Iniciando el Rastreador de Precios automático...');
+// '0 12,17 * * *' significa: "Minuto 0, de las horas 12 y 17, todos los días"
+cron.schedule('0 15,20 * * *', async () => {
+    console.log('⏰ [CRON] Iniciando actualización automática (12:00 / 17:00  UTC-3)...');
     
-    // Ejecutamos el script que acabás de crear como si lo escribieras en la consola
-    exec('node test-scraper.js', (error, stdout, stderr) => {
-        if (error) {
-            console.error(`❌ [CRON] Error ejecutando el scraper: ${error.message}`);
-            return;
-        }
-        if (stderr) {
-            console.error(`⚠️ [CRON] Advertencia en el scraper: ${stderr}`);
-        }
-        console.log(`✅ [CRON] Scraper finalizado. Resultado:\n${stdout}`);
-    });
+    try {
+        // Es mejor llamar directamente a la función que ya importaste
+        // en lugar de usar 'exec' para correr otro archivo.
+        const actualizados = await scrapeAllProducts();
+        console.log(`✅ [CRON] Éxito: ${actualizados} productos actualizados automáticamente.`);
+    } catch (error) {
+        console.error(`❌ [CRON] Error en la actualización automática:`, error.message);
+    }
 });
 
 // Middlewares
