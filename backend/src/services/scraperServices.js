@@ -91,23 +91,25 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
     }
 }
 // Función para scrapear TODOS los productos activos
+// Función para scrapear TODOS los productos activos
 async function scrapeAllProducts() {
     try {
         console.log('🔄 Iniciando actualización masiva de precios...');
         
-        // Buscamos todos los links junto con el nombre de su tienda
+        // 🔥 CAMBIO: Agregamos "p.name as product_name" y el JOIN con la tabla products
         const { rows: links } = await pool.query(`
-            SELECT psl.id, psl.product_url, s.name as shop_name
+            SELECT psl.id, psl.product_url, s.name as shop_name, p.name as product_name
             FROM product_shop_links psl
             JOIN shops s ON psl.shop_id = s.id
+            JOIN products p ON psl.product_id = p.id
             WHERE psl.is_active = true
         `);
 
         let actualizados = 0;
 
-        // Iteramos uno por uno y reutilizamos la función que ya tenemos
         for (const link of links) {
-            const nuevoPrecio = await scrapeOnDemand(link.id, link.product_url, link.shop_name);
+            // 🔥 CAMBIO: Ahora le pasamos el cuarto parámetro (link.product_name)
+            const nuevoPrecio = await scrapeOnDemand(link.id, link.product_url, link.shop_name, link.product_name);
             if (nuevoPrecio) {
                 actualizados++;
             }

@@ -169,7 +169,7 @@ app.post('/api/products', verificarToken, async (req, res) => {
         const linkId = linkRes.rows[0].id;
 
         // 4. 🔥 MAGIA REACTIVA: Ejecutamos el scraper acá mismo y esperamos a que termine
-        const currentPrice = await scrapeOnDemand(linkId, product_url, shopName);
+        const currentPrice = await scrapeOnDemand(linkId, product_url, shopName, name);
 
         res.status(201).json({ 
             message: '✅ Producto agregado y scrapeado',
