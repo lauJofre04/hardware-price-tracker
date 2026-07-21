@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 const pool = require('../config/db');
-const { enviarAlertaTelegram } = require('./telegramService'); // NUEVO
+const { enviarAlertaTelegram, enviarResumenPresupuesto } = require('./telegramService');
 
 async function scrapeOnDemand(linkId, url, shopName, productName) {
     let browser;
@@ -79,7 +79,7 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
             await pool.query(`INSERT INTO price_history (product_shop_id, price) VALUES ($1, $2)`, [linkId, precioLimpio]);
             await pool.query(`UPDATE product_shop_links SET last_price = $1 WHERE id = $2`, [precioLimpio, linkId]);
             
-            return precioLimpio;s
+            return precioLimpio;
         }
 
     } catch (error) {
@@ -114,6 +114,20 @@ async function scrapeAllProducts() {
                 actualizados++;
             }
         }
+
+        const { rows: [resumen] } = await pool.query(`
+            SELECT
+                COALESCE(SUM(CAST(psl.last_price AS bigint)), 0) AS total_presupuesto,
+                COUNT(*) AS cantidad_productos
+            FROM product_shop_links psl
+            JOIN products p ON psl.product_id = p.id
+            WHERE psl.is_active = true AND p.is_selected = true
+        `);
+
+        const totalPresupuesto = Number(resumen?.total_presupuesto || 0);
+        const cantidadProductos = Number(resumen?.cantidad_productos || 0);
+
+        await enviarResumenPresupuesto(totalPresupuesto, cantidadProductos);
 
         console.log(`✅ Actualización masiva terminada. ${actualizados}/${links.length} exitosos.`);
         return actualizados;

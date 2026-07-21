@@ -10,6 +10,7 @@ interface Product {
   shop_name: string;
   last_price: string;
   product_url: string;
+  is_selected: boolean;
 }
 
 interface Shop {
@@ -168,6 +169,40 @@ function App() {
       console.error('Error al actualizar el enlace:', error);
     }
   };
+
+  // Función para alternar la selección de un producto para el presupuesto
+  const handleToggleSelection = async (productId: number) => {
+    if (!token) {
+      toast.error('Iniciá sesión para seleccionar productos en el presupuesto.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/products/${productId}/toggle-selection`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setProducts(prevProducts =>
+          prevProducts.map(product =>
+            product.product_id === productId
+              ? { ...product, is_selected: data.is_selected }
+              : product
+          )
+        );
+      } else {
+        toast.error(data.error || 'No se pudo actualizar la selección.');
+      }
+    } catch (error) {
+      console.error('Error al alternar selección:', error);
+      toast.error('Error de conexión al actualizar la selección.');
+    }
+  };
   // Función para iniciar sesión
     // Función para iniciar sesión
   const handleLogin = async (e: React.FormEvent) => {
@@ -279,6 +314,21 @@ function App() {
   const filteredProducts = products.filter((product) =>
     product.product_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const selectedProducts = filteredProducts.filter((product) => product.is_selected);
+  const selectedTotal = selectedProducts.reduce((sum, product) => {
+    const value = Number(product.last_price);
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
+
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <Toaster richColors position="top-right" />
@@ -537,6 +587,18 @@ function App() {
                     </span>
                     <span className="text-xs text-gray-400 font-medium">{product.brand}</span>
                   </div>
+
+                  <label className="mb-3 flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={product.is_selected}
+                      onChange={() => handleToggleSelection(product.product_id)}
+                      disabled={!token}
+                      className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>Agregar al presupuesto</span>
+                  </label>
+
                   <h2 className="text-lg font-bold text-gray-800 mb-2 line-clamp-2" title={product.product_name}>
                     {product.product_name}
                   </h2>
@@ -586,6 +648,19 @@ function App() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {selectedProducts.length > 0 && (
+          <div className="fixed bottom-0 left-0 w-full bg-gray-900 text-white p-4 shadow-lg z-50">
+            <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+              <p className="font-semibold">
+                {selectedProducts.length} producto{selectedProducts.length === 1 ? '' : 's'} seleccionado{selectedProducts.length === 1 ? '' : 's'} para el presupuesto
+              </p>
+              <p className="text-lg font-bold">
+                Total: {formatCurrency(selectedTotal)}
+              </p>
+            </div>
           </div>
         )}
 

@@ -87,7 +87,8 @@ app.get('/api/products', async (req, res) => {
                 p.brand,
                 s.name as shop_name,
                 psl.last_price,
-                psl.product_url
+                psl.product_url,
+                p.is_selected
             FROM products p
             JOIN product_shop_links psl ON p.id = psl.product_id
             JOIN shops s ON psl.shop_id = s.id;
@@ -99,6 +100,31 @@ app.get('/api/products', async (req, res) => {
         res.status(500).json({ error: 'Error interno del servidor al obtener productos' });
     }
 });
+
+// Ruta para alternar la selección de un producto para el presupuesto
+app.put('/api/products/:id/toggle-selection', verificarToken, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query(
+            'UPDATE products SET is_selected = NOT is_selected WHERE id = $1 RETURNING is_selected',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Producto no encontrado' });
+        }
+
+        res.status(200).json({
+            message: '✅ Estado de selección actualizado',
+            is_selected: result.rows[0].is_selected
+        });
+    } catch (error) {
+        console.error('Error al alternar selección del producto:', error);
+        res.status(500).json({ error: 'Error al intentar cambiar la selección del producto' });
+    }
+});
+
 // Ruta para actualizar ÚNICAMENTE el link de un producto
 app.put('/api/products/:id', verificarToken, async (req, res) => {
     const { id } = req.params; // El ID del producto
