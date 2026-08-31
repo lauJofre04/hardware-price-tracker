@@ -98,44 +98,6 @@ function isValidPriceCandidate(value, context = '') {
     return true;
 }
 
-async function resolveCompraGamerProductUrl(page, url) {
-    const normalizedUrl = String(url || '').trim();
-    if (!normalizedUrl) return null;
-
-    if (normalizedUrl.includes('/producto/')) {
-        return normalizedUrl;
-    }
-
-    try {
-        await page.goto(normalizedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    } catch (error) {
-        return null;
-    }
-
-    try {
-        const candidates = await page.locator('a[href*="/producto/"]').evaluateAll((anchors) =>
-            anchors
-                .map((anchor) => ({
-                    href: anchor.getAttribute('href') || '',
-                    text: (anchor.textContent || '').replace(/\s+/g, ' ').trim()
-                }))
-                .filter(item => item.href && item.href.includes('/producto/'))
-                .slice(0, 12)
-        );
-
-        const best = candidates.find((item) => item.text.length > 0) || candidates[0];
-        if (!best) return null;
-
-        try {
-            return new URL(best.href, 'https://compragamer.com').toString();
-        } catch (error) {
-            return best.href;
-        }
-    } catch (error) {
-        return null;
-    }
-}
-
 async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser = null) {
     let browser = sharedBrowser;
     let page = null;
@@ -196,15 +158,9 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
                 viewport: { width: 1280, height: 900 }
             });
 
-            const resolvedUrl = await resolveCompraGamerProductUrl(page, url);
-            if (resolvedUrl && resolvedUrl !== url) {
-                console.log(`🔁 Compra Gamer redirigió la búsqueda a: ${resolvedUrl}`);
-            }
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-            const finalUrl = resolvedUrl || url;
-            await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-
-            if (finalUrl.includes('/armatupc')) {
+            if (url.includes('/armatupc')) {
                 const bodyText = await page.locator('body').innerText();
                 const totalMatch = bodyText.match(/Total:\s*\$?\s*([0-9\.]\d{0,3}(?:\.\d{3})*(?:,\d{2})?)/i);
 
