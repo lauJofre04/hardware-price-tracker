@@ -71,6 +71,21 @@ async function parsePriceText(texto) {
     return candidates.sort((a, b) => b - a)[0];
 }
 
+function isValidPriceCandidate(value, context = '') {
+    if (!Number.isFinite(value) || value <= 0) return false;
+    if (value >= 1900 && value <= 2100) return false;
+    if (value < 100) return false;
+
+    const hasMoneyContext = /(?:\$|ARS|AR\$|ARG|precio|oferta|ahora|total|subtotal|desde|por)/i;
+    const likelyYearContext = /(?:año|year|modelo|model|fabricado|fabricación|lanzamiento|release|released)/i;
+
+    if (likelyYearContext.test(context)) return false;
+    if (!hasMoneyContext.test(context) && value > 1000 && value <= 50000) return true;
+    if (hasMoneyContext.test(context)) return true;
+
+    return value > 1000;
+}
+
 async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser = null) {
     let browser = sharedBrowser;
     let page = null;
@@ -180,6 +195,11 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
         // GUARDADO EN BASE DE DATOS Y ALERTAS
         // ==========================================
         if (precioLimpio) {
+            if (!isValidPriceCandidate(precioLimpio, productName + ' ' + shopName + ' ' + url)) {
+                console.log(`🚫 Precio descartado por considerarse inválido: $${precioLimpio}`);
+                return null;
+            }
+
             console.log(`💰 ¡Precio encontrado! $${precioLimpio}. Guardando...`);
             
             const resAnterior = await pool.query(`SELECT last_price FROM product_shop_links WHERE id = $1`, [linkId]);

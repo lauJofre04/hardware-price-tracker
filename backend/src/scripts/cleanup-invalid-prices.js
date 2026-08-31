@@ -1,4 +1,3 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const pool = require('../config/db');
 
 async function cleanupInvalidPrices() {
@@ -25,7 +24,7 @@ async function cleanupInvalidPrices() {
 
     console.log(`✅ Registros corregidos: ${clearedLinks.rowCount} links y ${clearedHistory.rowCount} histórico.`);
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {});
     console.error('❌ Error al limpiar precios inválidos:', error.message);
     throw error;
   } finally {
@@ -35,5 +34,6 @@ async function cleanupInvalidPrices() {
 }
 
 cleanupInvalidPrices().catch((error) => {
+  console.error('❌ Falla final en limpieza de precios:', error.message);
   process.exitCode = 1;
 });
