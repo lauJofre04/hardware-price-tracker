@@ -76,14 +76,10 @@ function isValidPriceCandidate(value, context = '') {
     if (value >= 1900 && value <= 2100) return false;
     if (value < 100) return false;
 
-    const hasMoneyContext = /(?:\$|ARS|AR\$|ARG|precio|oferta|ahora|total|subtotal|desde|por)/i;
     const likelyYearContext = /(?:año|year|modelo|model|fabricado|fabricación|lanzamiento|release|released)/i;
-
     if (likelyYearContext.test(context)) return false;
-    if (!hasMoneyContext.test(context) && value > 1000 && value <= 50000) return true;
-    if (hasMoneyContext.test(context)) return true;
 
-    return value > 1000;
+    return true;
 }
 
 async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser = null) {
@@ -160,10 +156,10 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
 
             if (!precioLimpio) {
                 const candidateSelectors = [
-                    'span[class*="tw:text-price"]',
-                    '[class*="price"]',
-                    '[data-testid*="price"]',
-                    '.price',
+                    'span:has-text("$")',
+                    '[class*="price" i]',
+                    '[data-price]',
+                    '[data-testid*="price" i]',
                     'body'
                 ];
 
@@ -187,7 +183,10 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
 
             if (!precioLimpio) {
                 const bodyText = await page.locator('body').innerText();
-                precioLimpio = await parsePriceText(bodyText);
+                const visiblePrice = await parsePriceText(bodyText);
+                if (visiblePrice) {
+                    precioLimpio = visiblePrice;
+                }
             }
         }
 
@@ -195,7 +194,8 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
         // GUARDADO EN BASE DE DATOS Y ALERTAS
         // ==========================================
         if (precioLimpio) {
-            if (!isValidPriceCandidate(precioLimpio, productName + ' ' + shopName + ' ' + url)) {
+            const contextoValidacion = `${productName} ${shopName} ${url} ${precioLimpio}`;
+            if (!isValidPriceCandidate(precioLimpio, contextoValidacion)) {
                 console.log(`🚫 Precio descartado por considerarse inválido: $${precioLimpio}`);
                 return null;
             }
@@ -288,4 +288,4 @@ async function scrapeAllProducts() {
 }
 
 // Asegurate de exportar TAMBIÉN esta nueva función
-module.exports = { parsePriceText, scrapeOnDemand, scrapeAllProducts };
+module.exports = { parsePriceText, isValidPriceCandidate, scrapeOnDemand, scrapeAllProducts };

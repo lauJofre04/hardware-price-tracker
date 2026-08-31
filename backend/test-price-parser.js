@@ -5,7 +5,8 @@ const { parsePriceText } = require('./src/services/scraperServices');
     ['precio con año y precio real', 'Año 2017. Precio $130.000', 130000],
     ['precio normal con punto', 'Precio final $1.299,99', 1299.99],
     ['precio normal sin moneda', 'Oferta 3499', 3499],
-    ['año aislado', 'Fabricado en 2017', null]
+    ['año aislado', 'Fabricado en 2017', null],
+    ['mejor precio compra gamer', 'Mejor precio $ 519.990 Incluye 10% de descuento. Precio s/imp. nac. $ 470.579', 519990]
   ];
 
   let failed = false;
