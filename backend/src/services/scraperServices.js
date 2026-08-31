@@ -2,6 +2,33 @@ const { chromium } = require('playwright');
 const pool = require('../config/db');
 const { enviarAlertaTelegram, enviarResumenPresupuesto } = require('./telegramService');
 
+function isLikelyYear(value, context = '') {
+    if (value < 1900 || value > 2100) return false;
+
+    const yearContext = /(?:año|year|modelo|model|fabricado|fabricación|lanzamiento|release|released)/i;
+    const hasMoneyContext = /(?:\$|ARS|AR\$|ARG|precio|oferta|ahora|total|subtotal|desde|por)/i;
+
+    if (yearContext.test(context) || (!hasMoneyContext.test(context) && String(value).length === 4)) {
+        return true;
+    }
+
+    return false;
+}
+
+function parseNumericValue(raw) {
+    if (!raw) return null;
+
+    const cleaned = raw
+        .replace(/\./g, '')
+        .replace(/,/g, '.')
+        .replace(/[^0-9.]/g, '');
+
+    if (!cleaned) return null;
+
+    const value = Number(cleaned);
+    return Number.isFinite(value) && value > 0 ? value : null;
+}
+
 async function parsePriceText(texto) {
     if (!texto) return null;
 
@@ -10,24 +37,28 @@ async function parsePriceText(texto) {
         .trim();
 
     const pricePatterns = [
-        /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/g,
-        /(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?\s*(?:ARS|AR$|ARG)/gi,
+        /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/gi,
+        /(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?\s*(?:ARS|AR\$|ARG)/gi,
+        /(?:precio|oferta|ahora|total|subtotal|desde|por)\D{0,20}(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/gi,
         /\b(\d{1,3}(?:\.\d{3})+|\d+)\b/g
     ];
 
+    const candidates = [];
+
     for (const pattern of pricePatterns) {
-        const match = normalized.match(pattern);
-        if (!match) continue;
-
-        const candidate = match[match.length - 1]
-            .replace(/[^0-9]/g, '');
-
-        if (candidate && Number(candidate) > 0) {
-            return Number(candidate);
+        const matches = normalized.match(pattern) || [];
+        for (const raw of matches) {
+            const value = parseNumericValue(raw);
+            if (value == null) continue;
+            if (isLikelyYear(value, normalized)) continue;
+            if (value < 100) continue;
+            candidates.push(value);
         }
     }
 
-    return null;
+    if (!candidates.length) return null;
+
+    return candidates.sort((a, b) => b - a)[0];
 }
 
 async function scrapeOnDemand(linkId, url, shopName, productName) {
@@ -207,4 +238,4 @@ async function scrapeAllProducts() {
 }
 
 // Asegurate de exportar TAMBIÉN esta nueva función
-module.exports = { scrapeOnDemand, scrapeAllProducts };
+module.exports = { parsePriceText, scrapeOnDemand, scrapeAllProducts };
