@@ -2,6 +2,16 @@ const { chromium } = require('playwright');
 const pool = require('../config/db');
 const { enviarAlertaTelegram, enviarResumenPresupuesto } = require('./telegramService');
 
+const PLAYWRIGHT_BROWSER_ARGS = [
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-background-timer-throttling',
+    '--disable-renderer-backgrounding'
+];
+const MAX_CONCURRENT_SCRAPES = 2;
+
 function isLikelyYear(value, context = '') {
     if (value < 1900 || value > 2100) return false;
 
@@ -61,8 +71,9 @@ async function parsePriceText(texto) {
     return candidates.sort((a, b) => b - a)[0];
 }
 
-async function scrapeOnDemand(linkId, url, shopName, productName) {
-    let browser;
+async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser = null) {
+    let browser = sharedBrowser;
+    let page = null;
     try {
         console.log(`\n🤖 Iniciando actualización para: ${shopName}...`);
         let precioLimpio = null;
@@ -107,13 +118,20 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
             }
         }
         else if (shopName === 'Compra Gamer') {
-            console.log('🕸️ Levantando navegador fantasma para Compra Gamer...');
-            browser = await chromium.launch({ headless: true });
-            const page = await browser.newPage({
-                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            console.log('🕸️ Abriendo una sola instancia de navegador para Compra Gamer...');
+            if (!browser) {
+                browser = await chromium.launch({
+                    headless: true,
+                    args: PLAYWRIGHT_BROWSER_ARGS
+                });
+            }
+
+            page = await browser.newPage({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport: { width: 1280, height: 900 }
             });
 
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
             if (url.includes('/armatupc')) {
                 const bodyText = await page.locator('body').innerText();
@@ -164,17 +182,14 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
         if (precioLimpio) {
             console.log(`💰 ¡Precio encontrado! $${precioLimpio}. Guardando...`);
             
-            // 1. Buscamos el precio anterior ANTES de pisarlo
             const resAnterior = await pool.query(`SELECT last_price FROM product_shop_links WHERE id = $1`, [linkId]);
             const precioAnterior = resAnterior.rows[0]?.last_price;
 
-            // 2. Si hay precio anterior y el nuevo es DISTINTO (subió o bajó), disparamos la alerta
             if (precioAnterior && Number(precioLimpio) !== Number(precioAnterior)) {
                 console.log(`🚨 CAMBIO DE PRECIO DETECTADO: De $${precioAnterior} a $${precioLimpio}`);
                 await enviarAlertaTelegram(productName, shopName, precioAnterior, precioLimpio, url);
             }
 
-            // 3. Guardamos el historial y actualizamos el precio actual
             await pool.query(`INSERT INTO price_history (product_shop_id, price) VALUES ($1, $2)`, [linkId, precioLimpio]);
             await pool.query(`UPDATE product_shop_links SET last_price = $1 WHERE id = $2`, [precioLimpio, linkId]);
             
@@ -185,17 +200,17 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
         console.error(`❌ Error actualizando ${shopName}:`, error.message);
         return null;
     } finally {
-        // Solo cerramos el navegador si lo llegamos a abrir (Para Compra Gamer)
-        if (browser) await browser.close();
+        if (page) await page.close().catch(() => {});
+        if (!sharedBrowser && browser) await browser.close().catch(() => {});
     }
 }
 // Función para scrapear TODOS los productos activos
 // Función para scrapear TODOS los productos activos
 async function scrapeAllProducts() {
+    let browser = null;
     try {
         console.log('🔄 Iniciando actualización masiva de precios...');
-        
-        // 🔥 CAMBIO: Agregamos "p.name as product_name" y el JOIN con la tabla products
+
         const { rows: links } = await pool.query(`
             SELECT psl.id, psl.product_url, s.name as shop_name, p.name as product_name
             FROM product_shop_links psl
@@ -206,12 +221,25 @@ async function scrapeAllProducts() {
 
         let actualizados = 0;
 
-        for (const link of links) {
-            // 🔥 CAMBIO: Ahora le pasamos el cuarto parámetro (link.product_name)
-            const nuevoPrecio = await scrapeOnDemand(link.id, link.product_url, link.shop_name, link.product_name);
-            if (nuevoPrecio) {
-                actualizados++;
-            }
+        const compraGamerLinks = links.filter(link => link.shop_name === 'Compra Gamer');
+        if (compraGamerLinks.length > 0) {
+            browser = await chromium.launch({
+                headless: true,
+                args: PLAYWRIGHT_BROWSER_ARGS
+            });
+        }
+
+        const batches = [];
+        for (let i = 0; i < links.length; i += MAX_CONCURRENT_SCRAPES) {
+            batches.push(links.slice(i, i + MAX_CONCURRENT_SCRAPES));
+        }
+
+        for (const batch of batches) {
+            const batchResults = await Promise.all(
+                batch.map(link => scrapeOnDemand(link.id, link.product_url, link.shop_name, link.product_name, browser))
+            );
+
+            actualizados += batchResults.filter(Boolean).length;
         }
 
         const { rows: [resumen] } = await pool.query(`
@@ -234,6 +262,8 @@ async function scrapeAllProducts() {
     } catch (error) {
         console.error('❌ Error en el scraping masivo:', error.message);
         throw error;
+    } finally {
+        if (browser) await browser.close().catch(() => {});
     }
 }
 
