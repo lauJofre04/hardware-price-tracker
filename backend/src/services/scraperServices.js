@@ -65,6 +65,7 @@ async function parsePriceText(texto) {
             const value = parseNumericValue(raw);
             if (value == null) continue;
             if (value < 100) continue;
+            if (value >= 1900 && value <= 2100) continue;
             if (isLikelyYear(value, normalized)) continue;
 
             const matchIndex = normalized.indexOf(raw);
@@ -75,7 +76,6 @@ async function parsePriceText(texto) {
 
             if (!hasMoneyContext && value < 1000) continue;
             if (!hasMoneyContext && hasRejectContext) continue;
-            if (!hasMoneyContext && value >= 1900 && value <= 2100) continue;
             if (!hasMoneyContext && value > 1000 && value <= 50000 && /(?:sku|id|modelo|model|año|year|fabricado|fabricación|lanzamiento|release|released)/i.test(context)) continue;
 
             candidates.push(value);
