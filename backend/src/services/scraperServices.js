@@ -159,6 +159,14 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
             });
 
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            try {
+                await page.waitForFunction(() => {
+                    const text = document.body ? document.body.innerText : '';
+                    return /Mejor precio|Otros medios de pago|\$\s*\d/.test(text);
+                }, { timeout: 15000 });
+            } catch (error) {
+                console.log('⏳ La página de Compra Gamer no mostró precio visible a tiempo; seguimos con el parseo del body actual.');
+            }
 
             if (url.includes('/armatupc')) {
                 const bodyText = await page.locator('body').innerText();
