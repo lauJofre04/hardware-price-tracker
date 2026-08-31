@@ -64,14 +64,26 @@ cron.schedule('0 15,20 * * *', async () => {
 });
 
 // Middlewares
+const allowedOrigins = [
+    'http://localhost:5173',
+    'https://hardware-price-tracker-eight.vercel.app',
+    'https://hardware-price-tracker.vercel.app',
+    'https://hardware-price-tracker-git-main.vercel.app'
+].filter(Boolean);
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173', // Para cuando programás en tu compu
-    'https://hardware-price-tracker-eight.vercel.app' // Tu página en producción
-  ],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('CORS no permitido para este origen'));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'] // ¡CLAVE PARA QUE PASE EL TOKEN!
-})); // Permite peticiones desde el frontend
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(express.json()); // Permite recibir datos en formato JSON
 
 app.use(async (req, res, next) => {

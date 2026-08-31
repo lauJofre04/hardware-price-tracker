@@ -67,8 +67,8 @@ export default function PriceChart({ productId }: { productId: number }) {
         ref={scrollContainerRef} 
         className="w-full overflow-x-auto border border-gray-100 rounded-lg bg-white p-2 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent scroll-smooth"
       >
-        <div style={{ width: `${anchoTotalCalculado}%`, minWidth: '100%' }} className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
+        <div style={{ width: `${anchoTotalCalculado}%`, minWidth: '100%', minHeight: 192 }} className="h-48">
+          <ResponsiveContainer width="100%" height={192} minWidth={0} minHeight={192}>
             <LineChart data={data} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis 
