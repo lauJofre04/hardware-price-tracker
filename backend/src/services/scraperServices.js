@@ -2,23 +2,44 @@ const { chromium } = require('playwright');
 const pool = require('../config/db');
 const { enviarAlertaTelegram, enviarResumenPresupuesto } = require('./telegramService');
 
+async function parsePriceText(texto) {
+    if (!texto) return null;
+
+    const normalized = texto
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const pricePatterns = [
+        /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/g,
+        /(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?\s*(?:ARS|AR$|ARG)/gi,
+        /\b(\d{1,3}(?:\.\d{3})+|\d+)\b/g
+    ];
+
+    for (const pattern of pricePatterns) {
+        const match = normalized.match(pattern);
+        if (!match) continue;
+
+        const candidate = match[match.length - 1]
+            .replace(/[^0-9]/g, '');
+
+        if (candidate && Number(candidate) > 0) {
+            return Number(candidate);
+        }
+    }
+
+    return null;
+}
+
 async function scrapeOnDemand(linkId, url, shopName, productName) {
     let browser;
     try {
         console.log(`\n🤖 Iniciando actualización para: ${shopName}...`);
         let precioLimpio = null;
 
-        // ==========================================
-        // ESTRATEGIA 1: API OFICIAL (Mercado Libre)
-        // ==========================================
-        // ==========================================
-        // ESTRATEGIA 3: EXTRACCIÓN DE HTML CRUDO
-        // ==========================================
         if (shopName === 'Mercado Libre') {
             console.log('⚡ Plan D: Camuflaje ninja y extracción de HTML crudo...');
-            
+
             try {
-                // Hacemos una petición directa haciéndonos pasar por un Chrome en Windows
                 const response = await fetch(url, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -26,37 +47,84 @@ async function scrapeOnDemand(linkId, url, shopName, productName) {
                         'Accept-Language': 'es-AR,es;q=0.8,en-US;q=0.5,en;q=0.3'
                     }
                 });
-                
+
                 const html = await response.text();
-                
-                // Buscamos EXACTAMENTE la etiqueta invisible de SEO en el texto crudo
-                // Esto busca algo como: <meta itemprop="price" content="150000">
-                const match = html.match(/<meta\s+itemprop="price"\s+content="(\d+(\.\d+)?)"/i);
-                
-                if (match && match[1]) {
-                    precioLimpio = parseInt(match[1], 10);
-                    console.log(`🎯 ¡Bingo! Precio extraído del código fuente: $${precioLimpio}`);
-                } else {
-                    console.log('⚠️ El HTML cargó, pero no se encontró la etiqueta de precio (¿Pausada?).');
+                const pricePatterns = [
+                    /<meta\s+itemprop="price"\s+content="(\d+(?:\.\d+)?)"/i,
+                    /"price"\s*:\s*"?(\d+(?:\.\d+)?)"?/i,
+                    /"priceValue"\s*:\s*"?(\d+(?:\.\d+)?)"?/i,
+                    /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/i
+                ];
+
+                for (const pattern of pricePatterns) {
+                    const match = html.match(pattern);
+                    if (match && match[1]) {
+                        const numero = Number(match[1].replace(/\./g, ''));
+                        if (Number.isFinite(numero) && numero > 0) {
+                            precioLimpio = numero;
+                            console.log(`🎯 ¡Bingo! Precio extraído del código fuente: $${precioLimpio}`);
+                            break;
+                        }
+                    }
+                }
+
+                if (!precioLimpio) {
+                    console.log('⚠️ El HTML cargó, pero no se encontró la etiqueta de precio en el HTML crudo.');
                 }
             } catch (error) {
                 console.error('❌ Error al descargar el HTML:', error.message);
             }
         }
-        // ==========================================
-        // ESTRATEGIA 2: SCRAPING CLÁSICO (Compra Gamer)
-        // ==========================================
         else if (shopName === 'Compra Gamer') {
             console.log('🕸️ Levantando navegador fantasma para Compra Gamer...');
             browser = await chromium.launch({ headless: true });
-            const page = await browser.newPage();
-            
+            const page = await browser.newPage({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            });
+
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-            const el = page.locator('span[class*="tw:text-price"]').filter({ hasText: /[0-9]/ }).first();
-            await el.waitFor({ state: 'visible', timeout: 60000 });
-            const text = await el.innerText();
-            precioLimpio = parseInt(text.replace(/[^0-9]/g, ''), 10);
+            if (url.includes('/armatupc')) {
+                const bodyText = await page.locator('body').innerText();
+                const totalMatch = bodyText.match(/Total:\s*\$?\s*([0-9\.]\d{0,3}(?:\.\d{3})*(?:,\d{2})?)/i);
+
+                if (totalMatch && totalMatch[1]) {
+                    precioLimpio = Number(totalMatch[1].replace(/\./g, '').replace(',', '.'));
+                    console.log(`🎯 Precio detectado para armar PC: $${precioLimpio}`);
+                }
+            }
+
+            if (!precioLimpio) {
+                const candidateSelectors = [
+                    'span[class*="tw:text-price"]',
+                    '[class*="price"]',
+                    '[data-testid*="price"]',
+                    '.price',
+                    'body'
+                ];
+
+                for (const selector of candidateSelectors) {
+                    try {
+                        const el = page.locator(selector).first();
+                        const count = await el.count();
+                        if (count === 0) continue;
+
+                        const text = await el.innerText();
+                        const parsed = await parsePriceText(text);
+                        if (parsed) {
+                            precioLimpio = parsed;
+                            break;
+                        }
+                    } catch (error) {
+                        // sigue intentando con los siguientes selectores
+                    }
+                }
+            }
+
+            if (!precioLimpio) {
+                const bodyText = await page.locator('body').innerText();
+                precioLimpio = await parsePriceText(bodyText);
+            }
         }
 
         // ==========================================
