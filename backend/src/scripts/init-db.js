@@ -7,6 +7,7 @@ const createTablesQuery = `
         category VARCHAR(100),
         brand VARCHAR(100),
         image_url TEXT,
+        is_selected BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -50,13 +51,20 @@ async function initDB() {
         await pool.query(createTablesQuery);
         console.log('✅ ¡Todas las tablas fueron creadas con éxito!');
         
-        // Insertamos la tienda Compra Gamer por defecto para ya tenerla
+        // Insertamos las tiendas base para que el radar funcione desde el primer momento
         await pool.query(`
-            INSERT INTO shops (name, base_url) 
-            VALUES ('Compra Gamer', 'https://compragamer.com')
-            ON CONFLICT DO NOTHING;
+            INSERT INTO shops (name, base_url)
+            SELECT 'Compra Gamer', 'https://compragamer.com'
+            WHERE NOT EXISTS (SELECT 1 FROM shops WHERE name = 'Compra Gamer');
         `);
-        console.log('🛒 Tienda "Compra Gamer" registrada.');
+
+        await pool.query(`
+            INSERT INTO shops (name, base_url)
+            SELECT 'Mercado Libre', 'https://www.mercadolibre.com.ar'
+            WHERE NOT EXISTS (SELECT 1 FROM shops WHERE name = 'Mercado Libre');
+        `);
+
+        console.log('🛒 Tiendas base registradas.');
 
     } catch (error) {
         console.error('❌ Error creando las tablas:', error);

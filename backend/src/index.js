@@ -14,6 +14,37 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const verificarToken = require('./middleware/auth'); // Nuestro guardia
 
+async function ensureDbSchema() {
+    try {
+        await pool.query(`
+            ALTER TABLE products
+            ADD COLUMN IF NOT EXISTS is_selected BOOLEAN DEFAULT FALSE;
+        `);
+
+        await pool.query(`
+            ALTER TABLE product_shop_links
+            ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+        `);
+
+        await pool.query(`
+            INSERT INTO shops (name, base_url)
+            SELECT 'Compra Gamer', 'https://compragamer.com'
+            WHERE NOT EXISTS (SELECT 1 FROM shops WHERE name = 'Compra Gamer');
+        `);
+
+        await pool.query(`
+            INSERT INTO shops (name, base_url)
+            SELECT 'Mercado Libre', 'https://www.mercadolibre.com.ar'
+            WHERE NOT EXISTS (SELECT 1 FROM shops WHERE name = 'Mercado Libre');
+        `);
+
+        console.log('✅ Esquema de base de datos verificado.');
+    } catch (error) {
+        console.error('❌ Error validando esquema de base de datos:', error);
+        throw error;
+    }
+}
+
 // ==========================================
 // TAREAS AUTOMÁTICAS (CRON JOBS)
 // ==========================================
@@ -42,6 +73,15 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'] // ¡CLAVE PARA QUE PASE EL TOKEN!
 })); // Permite peticiones desde el frontend
 app.use(express.json()); // Permite recibir datos en formato JSON
+
+app.use(async (req, res, next) => {
+    try {
+        await ensureDbSchema();
+        next();
+    } catch (error) {
+        res.status(500).json({ error: 'Error inicializando base de datos' });
+    }
+});
 
 // Ruta para iniciar sesión y obtener el Token
 app.post('/api/auth/login', async (req, res) => {
