@@ -44,12 +44,16 @@ async function parsePriceText(texto) {
 
     const normalized = texto
         .replace(/\s+/g, ' ')
+        .replace(/\u00a0/g, ' ')
         .trim();
 
+    const moneyKeywords = /(?:\$|ARS|AR\$|ARG|precio|oferta|ahora|total|subtotal|desde|por|mejor precio|cuotas|s\/imp|final)/i;
+    const rejectKeywords = /(?:sku|id|modelo|model|año|year|fabricado|fabricación|lanzamiento|release|released|capacidad|stock|cantidad)/i;
+
     const pricePatterns = [
-        /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/gi,
-        /(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?\s*(?:ARS|AR\$|ARG)/gi,
-        /(?:precio|oferta|ahora|total|subtotal|desde|por)\D{0,20}(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?/gi,
+        /\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:[.,]\d{1,2})?/gi,
+        /(\d{1,3}(?:\.\d{3})+|\d+)(?:[.,]\d{1,2})?\s*(?:ARS|AR\$|ARG)/gi,
+        /(?:precio|oferta|ahora|total|subtotal|desde|por|mejor precio|cuotas|s\/imp|final)\D{0,30}(\d{1,3}(?:\.\d{3})+|\d+)(?:[.,]\d{1,2})?/gi,
         /\b(\d{1,3}(?:\.\d{3})+|\d+)\b/g
     ];
 
@@ -60,15 +64,27 @@ async function parsePriceText(texto) {
         for (const raw of matches) {
             const value = parseNumericValue(raw);
             if (value == null) continue;
-            if (isLikelyYear(value, normalized)) continue;
             if (value < 100) continue;
+            if (isLikelyYear(value, normalized)) continue;
+
+            const matchIndex = normalized.indexOf(raw);
+            const context = normalized.slice(Math.max(0, matchIndex - 60), Math.min(normalized.length, matchIndex + raw.length + 60));
+
+            const hasMoneyContext = moneyKeywords.test(context);
+            const hasRejectContext = rejectKeywords.test(context);
+
+            if (!hasMoneyContext && value < 1000) continue;
+            if (!hasMoneyContext && hasRejectContext) continue;
+            if (!hasMoneyContext && value >= 1900 && value <= 2100) continue;
+            if (!hasMoneyContext && value > 1000 && value <= 50000 && /(?:sku|id|modelo|model|año|year|fabricado|fabricación|lanzamiento|release|released)/i.test(context)) continue;
+
             candidates.push(value);
         }
     }
 
     if (!candidates.length) return null;
 
-    return candidates.sort((a, b) => b - a)[0];
+    return [...new Set(candidates)].sort((a, b) => b - a)[0];
 }
 
 function isValidPriceCandidate(value, context = '') {
@@ -80,6 +96,44 @@ function isValidPriceCandidate(value, context = '') {
     if (likelyYearContext.test(context)) return false;
 
     return true;
+}
+
+async function resolveCompraGamerProductUrl(page, url) {
+    const normalizedUrl = String(url || '').trim();
+    if (!normalizedUrl) return null;
+
+    if (normalizedUrl.includes('/producto/')) {
+        return normalizedUrl;
+    }
+
+    try {
+        await page.goto(normalizedUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    } catch (error) {
+        return null;
+    }
+
+    try {
+        const candidates = await page.locator('a[href*="/producto/"]').evaluateAll((anchors) =>
+            anchors
+                .map((anchor) => ({
+                    href: anchor.getAttribute('href') || '',
+                    text: (anchor.textContent || '').replace(/\s+/g, ' ').trim()
+                }))
+                .filter(item => item.href && item.href.includes('/producto/'))
+                .slice(0, 12)
+        );
+
+        const best = candidates.find((item) => item.text.length > 0) || candidates[0];
+        if (!best) return null;
+
+        try {
+            return new URL(best.href, 'https://compragamer.com').toString();
+        } catch (error) {
+            return best.href;
+        }
+    } catch (error) {
+        return null;
+    }
 }
 
 async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser = null) {
@@ -142,9 +196,15 @@ async function scrapeOnDemand(linkId, url, shopName, productName, sharedBrowser 
                 viewport: { width: 1280, height: 900 }
             });
 
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            const resolvedUrl = await resolveCompraGamerProductUrl(page, url);
+            if (resolvedUrl && resolvedUrl !== url) {
+                console.log(`🔁 Compra Gamer redirigió la búsqueda a: ${resolvedUrl}`);
+            }
 
-            if (url.includes('/armatupc')) {
+            const finalUrl = resolvedUrl || url;
+            await page.goto(finalUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+
+            if (finalUrl.includes('/armatupc')) {
                 const bodyText = await page.locator('body').innerText();
                 const totalMatch = bodyText.match(/Total:\s*\$?\s*([0-9\.]\d{0,3}(?:\.\d{3})*(?:,\d{2})?)/i);
 
