@@ -10,7 +10,7 @@ function verificarToken(req, res, next) {
     }
 
     // Verificamos que el token sea nuestro y no esté vencido
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
         if (err) return res.status(403).json({ error: '🛑 Token inválido o expirado.' });
         
         req.user = user; // Guardamos los datos del usuario por si los necesitamos
