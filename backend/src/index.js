@@ -5,6 +5,35 @@ const { chromium } = require('playwright'); // Traemos la conexión a PostgreSQL
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', 1); // detrás de un proxy (Render), para que req.ip sea la IP real
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    console.error('❌ Falta JWT_SECRET (mínimo 32 caracteres) en las variables de entorno.');
+    process.exit(1);
+}
+
+// Limitador simple en memoria para frenar fuerza bruta en el login (una sola instancia)
+const loginIntentos = new Map();
+const limitarLogin = (req, res, next) => {
+    const ventana = 15 * 60 * 1000;
+    const maximo = 10;
+    const ahora = Date.now();
+    let reg = loginIntentos.get(req.ip);
+    if (!reg || reg.reset <= ahora) {
+        reg = { count: 0, reset: ahora + ventana };
+        loginIntentos.set(req.ip, reg);
+    }
+    reg.count++;
+    if (reg.count > maximo) {
+        res.set('Retry-After', String(Math.ceil((reg.reset - ahora) / 1000)));
+        return res.status(429).json({ error: 'Demasiados intentos. Probá de nuevo en unos minutos.' });
+    }
+    next();
+};
+setInterval(() => {
+    const ahora = Date.now();
+    for (const [ip, reg] of loginIntentos) if (reg.reset <= ahora) loginIntentos.delete(ip);
+}, 15 * 60 * 1000).unref();
 const PORT = process.env.PORT || 3000;
 
 const cron = require('node-cron');
@@ -84,7 +113,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-app.use(express.json()); // Permite recibir datos en formato JSON
+app.use(express.json({ limit: '100kb' })); // Permite recibir datos en formato JSON
 
 app.use(async (req, res, next) => {
     try {
@@ -96,17 +125,21 @@ app.use(async (req, res, next) => {
 });
 
 // Ruta para iniciar sesión y obtener el Token
-app.post('/api/auth/login', async (req, res) => {
-    const { username, password } = req.body;
+app.post('/api/auth/login', limitarLogin, async (req, res) => {
+    const { username, password } = req.body || {};
+    if (typeof username !== 'string' || typeof password !== 'string') {
+        return res.status(400).json({ error: 'Datos inválidos' });
+    }
 
     try {
         const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+        // Mismo mensaje para usuario inexistente y contraseña incorrecta (evita enumerar usuarios)
+        if (result.rows.length === 0) return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
 
         const user = result.rows[0];
         const validPassword = await bcrypt.compare(password, user.password);
         
-        if (!validPassword) return res.status(401).json({ error: 'Contraseña incorrecta' });
+        if (!validPassword) return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
 
         // Si la contraseña es correcta, le fabricamos un pase VIP (Token) que dura 24 horas
         const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: '24h' });
