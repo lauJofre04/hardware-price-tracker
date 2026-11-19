@@ -12,6 +12,7 @@ const { crearLimitador } = require('./middleware/rateLimit');
 const { scrapeOnDemand, scrapeAllProducts, ScrapeEnCursoError } = require('./services/scraperServices');
 const { buscarEnMercadoLibre } = require('./services/mlSearch');
 const { validarUrlProducto, parseId, textoCorto } = require('./utils/validators');
+const { origenPermitido } = require('./utils/cors');
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
     console.error('❌ Falta JWT_SECRET (mínimo 32 caracteres) en las variables de entorno.');
@@ -27,19 +28,13 @@ app.set('trust proxy', 1); // detrás de un proxy (Render), para que req.ip sea 
 // ==========================================
 // Middlewares
 // ==========================================
-const allowedOrigins = [
-    'http://localhost:5173',
-    'https://hardware-price-tracker-eight.vercel.app',
-    'https://hardware-price-tracker.vercel.app',
-    'https://hardware-price-tracker-git-main.vercel.app',
-    // Orígenes extra separados por coma (ej: un dominio propio)
-    ...(process.env.CORS_ORIGIN || '').split(',').map((o) => o.trim())
-].filter(Boolean);
-
 app.use(cors({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error('CORS no permitido para este origen'));
+        if (origenPermitido(origin)) return callback(null, true);
+        // Se rechaza sin lanzar error (antes dejaba un stack trace por cada petición) y se registra
+        // el origen para poder agregarlo a CORS_ORIGIN si es legítimo.
+        console.warn(`🚫 CORS: origen no permitido: ${origin}`);
+        callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
