@@ -91,9 +91,14 @@ function App() {
         setFormData({ name: '', category: '', brand: '', shop_id: '', product_url: '' });
         setShowForm(false);
         fetchProducts(); // Recargamos para ver la tarjeta terminada
+      } else {
+        // El backend valida los datos (por ejemplo, que el enlace sea de la tienda elegida)
+        const body = await res.json().catch(() => null);
+        toast.error(body?.error || 'No se pudo agregar el producto.');
       }
     } catch (error) {
       console.error('Error al enviar formulario:', error);
+      toast.error('Error de conexión. Revisá si el servidor está encendido.');
     } finally {
       setIsSubmitting(false); // Liberamos el botón
     }
@@ -116,8 +121,9 @@ function App() {
         // 2. ¡El toque de victoria!
         toast.success('¡Todos los precios fueron actualizados con éxito! 🚀');
       } else {
-        // Por si el backend tira un error 500
-        toast.error('Hubo un problema en el servidor al intentar actualizar.');
+        // 409: ya hay una actualización en curso; el resto, error del servidor
+        const body = await res.json().catch(() => null);
+        toast.error(body?.error || 'Hubo un problema en el servidor al intentar actualizar.');
       }
     } catch (error) {
       console.error('Error al actualizar todos los precios:', error);

@@ -1,130 +1,66 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const pool = require('./config/db');
-const { chromium } = require('playwright'); // Traemos la conexión a PostgreSQL
-require('dotenv').config();
+const cron = require('node-cron');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 
-const app = express();
-app.set('trust proxy', 1); // detrás de un proxy (Render), para que req.ip sea la IP real
+const pool = require('./config/db');
+const { ensureDbSchema } = require('./config/schema');
+const verificarToken = require('./middleware/auth');
+const { crearLimitador } = require('./middleware/rateLimit');
+const { scrapeOnDemand, scrapeAllProducts, ScrapeEnCursoError } = require('./services/scraperServices');
+const { buscarEnMercadoLibre } = require('./services/mlSearch');
+const { validarUrlProducto, parseId, textoCorto } = require('./utils/validators');
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
     console.error('❌ Falta JWT_SECRET (mínimo 32 caracteres) en las variables de entorno.');
     process.exit(1);
 }
 
-// Limitador simple en memoria para frenar fuerza bruta en el login (una sola instancia)
-const loginIntentos = new Map();
-const limitarLogin = (req, res, next) => {
-    const ventana = 15 * 60 * 1000;
-    const maximo = 10;
-    const ahora = Date.now();
-    let reg = loginIntentos.get(req.ip);
-    if (!reg || reg.reset <= ahora) {
-        reg = { count: 0, reset: ahora + ventana };
-        loginIntentos.set(req.ip, reg);
-    }
-    reg.count++;
-    if (reg.count > maximo) {
-        res.set('Retry-After', String(Math.ceil((reg.reset - ahora) / 1000)));
-        return res.status(429).json({ error: 'Demasiados intentos. Probá de nuevo en unos minutos.' });
-    }
-    next();
-};
-setInterval(() => {
-    const ahora = Date.now();
-    for (const [ip, reg] of loginIntentos) if (reg.reset <= ahora) loginIntentos.delete(ip);
-}, 15 * 60 * 1000).unref();
 const PORT = process.env.PORT || 3000;
+const ESPERA_MAX_SCRAPE_MS = 20000; // cuánto espera POST /api/products al primer precio
 
-const cron = require('node-cron');
-const { exec } = require('child_process');
-const { scrapeOnDemand, scrapeAllProducts } = require('./services/scraperServices');
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcrypt');
-const verificarToken = require('./middleware/auth'); // Nuestro guardia
-
-async function ensureDbSchema() {
-    try {
-        await pool.query(`
-            ALTER TABLE products
-            ADD COLUMN IF NOT EXISTS is_selected BOOLEAN DEFAULT FALSE;
-        `);
-
-        await pool.query(`
-            ALTER TABLE product_shop_links
-            ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
-        `);
-
-        await pool.query(`
-            INSERT INTO shops (name, base_url)
-            SELECT 'Compra Gamer', 'https://compragamer.com'
-            WHERE NOT EXISTS (SELECT 1 FROM shops WHERE name = 'Compra Gamer');
-        `);
-
-        await pool.query(`
-            INSERT INTO shops (name, base_url)
-            SELECT 'Mercado Libre', 'https://www.mercadolibre.com.ar'
-            WHERE NOT EXISTS (SELECT 1 FROM shops WHERE name = 'Mercado Libre');
-        `);
-
-        console.log('✅ Esquema de base de datos verificado.');
-    } catch (error) {
-        console.error('❌ Error validando esquema de base de datos:', error);
-        throw error;
-    }
-}
+const app = express();
+app.set('trust proxy', 1); // detrás de un proxy (Render), para que req.ip sea la IP real
 
 // ==========================================
-// TAREAS AUTOMÁTICAS (CRON JOBS)
-// ==========================================
-
-// '0 12,17 * * *' significa: "Minuto 0, de las horas 12 y 17, todos los días"
-cron.schedule('0 15,20 * * *', async () => {
-    console.log('⏰ [CRON] Iniciando actualización automática (12:00 / 17:00  UTC-3)...');
-    
-    try {
-        // Es mejor llamar directamente a la función que ya importaste
-        // en lugar de usar 'exec' para correr otro archivo.
-        const actualizados = await scrapeAllProducts();
-        console.log(`✅ [CRON] Éxito: ${actualizados} productos actualizados automáticamente.`);
-    } catch (error) {
-        console.error(`❌ [CRON] Error en la actualización automática:`, error.message);
-    }
-});
-
 // Middlewares
+// ==========================================
 const allowedOrigins = [
     'http://localhost:5173',
     'https://hardware-price-tracker-eight.vercel.app',
     'https://hardware-price-tracker.vercel.app',
-    'https://hardware-price-tracker-git-main.vercel.app'
+    'https://hardware-price-tracker-git-main.vercel.app',
+    // Orígenes extra separados por coma (ej: un dominio propio)
+    ...(process.env.CORS_ORIGIN || '').split(',').map((o) => o.trim())
 ].filter(Boolean);
 
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error('CORS no permitido para este origen'));
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error('CORS no permitido para este origen'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 }));
-app.use(express.json({ limit: '100kb' })); // Permite recibir datos en formato JSON
+app.use(express.json({ limit: '100kb' }));
 
-app.use(async (req, res, next) => {
-    try {
-        await ensureDbSchema();
-        next();
-    } catch (error) {
-        res.status(500).json({ error: 'Error inicializando base de datos' });
-    }
+const limitarLogin = crearLimitador({
+    ventanaMs: 15 * 60 * 1000,
+    maximo: 10,
+    mensaje: 'Demasiados intentos. Probá de nuevo en unos minutos.'
+});
+const limitarBusquedas = crearLimitador({
+    ventanaMs: 10 * 60 * 1000,
+    maximo: 20,
+    mensaje: 'Demasiadas búsquedas. Esperá unos minutos.'
 });
 
-// Ruta para iniciar sesión y obtener el Token
+// ==========================================
+// Rutas
+// ==========================================
 app.post('/api/auth/login', limitarLogin, async (req, res) => {
     const { username, password } = req.body || {};
     if (typeof username !== 'string' || typeof password !== 'string') {
@@ -138,34 +74,31 @@ app.post('/api/auth/login', limitarLogin, async (req, res) => {
 
         const user = result.rows[0];
         const validPassword = await bcrypt.compare(password, user.password);
-        
         if (!validPassword) return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
 
-        // Si la contraseña es correcta, le fabricamos un pase VIP (Token) que dura 24 horas
         const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: '24h' });
-
         res.json({ token, message: '¡Bienvenido administrador!' });
     } catch (error) {
-        // AGREGAMOS ESTA LÍNEA PARA VER EL ERROR REAL EN LA TERMINAL:
-        console.error('🚨 Error detallado en el login:', error); 
-        
+        console.error('🚨 Error en el login:', error);
         res.status(500).json({ error: 'Error en el servidor' });
     }
 });
-// ==========================================
-// RUTAS DE LA API (Endpoints)
-// ==========================================
 
-// Ruta básica para verificar que la API funciona
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'API del Rastreador de Precios funcionando 🚀' });
+// Verifica también la base de datos (útil para el health check de Render)
+app.get('/api/health', async (req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'OK', message: 'API del Rastreador de Precios funcionando 🚀' });
+    } catch (error) {
+        console.error('Health check: base de datos no disponible:', error.message);
+        res.status(503).json({ status: 'ERROR', message: 'Base de datos no disponible' });
+    }
 });
 
-// Ruta para obtener todos los productos y su último precio
 app.get('/api/products', async (req, res) => {
     try {
-        const query = `
-            SELECT 
+        const result = await pool.query(`
+            SELECT
                 p.id as product_id,
                 p.name as product_name,
                 p.category,
@@ -177,28 +110,24 @@ app.get('/api/products', async (req, res) => {
             FROM products p
             JOIN product_shop_links psl ON p.id = psl.product_id
             JOIN shops s ON psl.shop_id = s.id;
-        `;
-        const result = await pool.query(query);
-        res.json(result.rows); // Devolvemos los datos como JSON
+        `);
+        res.json(result.rows);
     } catch (error) {
         console.error('Error al consultar productos:', error);
         res.status(500).json({ error: 'Error interno del servidor al obtener productos' });
     }
 });
 
-// Ruta para alternar la selección de un producto para el presupuesto
 app.put('/api/products/:id/toggle-selection', verificarToken, async (req, res) => {
-    const { id } = req.params;
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     try {
         const result = await pool.query(
             'UPDATE products SET is_selected = NOT is_selected WHERE id = $1 RETURNING is_selected',
             [id]
         );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Producto no encontrado' });
-        }
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
 
         res.status(200).json({
             message: '✅ Estado de selección actualizado',
@@ -210,16 +139,26 @@ app.put('/api/products/:id/toggle-selection', verificarToken, async (req, res) =
     }
 });
 
-// Ruta para actualizar ÚNICAMENTE el link de un producto
+// Actualiza ÚNICAMENTE el link de un producto
 app.put('/api/products/:id', verificarToken, async (req, res) => {
-    const { id } = req.params; // El ID del producto
-    const { product_url } = req.body; // El nuevo link
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
 
     try {
-        await pool.query(
-            'UPDATE product_shop_links SET product_url = $1 WHERE product_id = $2',
-            [product_url, id]
+        const { rows } = await pool.query(
+            `SELECT psl.id, s.name AS shop_name
+             FROM product_shop_links psl JOIN shops s ON s.id = psl.shop_id
+             WHERE psl.product_id = $1`,
+            [id]
         );
+        if (rows.length === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+
+        const url = validarUrlProducto(req.body?.product_url, rows[0].shop_name);
+        if (!url) {
+            return res.status(400).json({ error: `El enlace debe ser una URL https de ${rows[0].shop_name}` });
+        }
+
+        await pool.query('UPDATE product_shop_links SET product_url = $1 WHERE id = $2', [url, rows[0].id]);
         res.status(200).json({ message: '✅ Enlace actualizado correctamente' });
     } catch (error) {
         console.error('Error al actualizar enlace:', error);
@@ -227,17 +166,21 @@ app.put('/api/products/:id', verificarToken, async (req, res) => {
     }
 });
 
-// Ruta para obtener el historial de precios de un producto específico (Para el gráfico)
-app.get('/api/products/:shopLinkId/history',  async (req, res) => {
-    const { shopLinkId } = req.params;
+// Historial de precios de un PRODUCTO (el gráfico del frontend pasa product_id).
+// Antes se filtraba por el id del link, que solo coincidía mientras ambas secuencias iban sincronizadas.
+app.get('/api/products/:id/history', async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
     try {
-        const query = `
-            SELECT price, recorded_at 
-            FROM price_history 
-            WHERE product_shop_id = $1 
-            ORDER BY recorded_at ASC;
-        `;
-        const result = await pool.query(query, [shopLinkId]);
+        const result = await pool.query(
+            `SELECT ph.price, ph.recorded_at
+             FROM price_history ph
+             JOIN product_shop_links psl ON psl.id = ph.product_shop_id
+             WHERE psl.product_id = $1
+             ORDER BY ph.recorded_at ASC`,
+            [id]
+        );
         res.json(result.rows);
     } catch (error) {
         console.error('Error al consultar historial:', error);
@@ -245,7 +188,6 @@ app.get('/api/products/:shopLinkId/history',  async (req, res) => {
     }
 });
 
-// Ruta para obtener las tiendas disponibles (Para el select del formulario)
 app.get('/api/shops', async (req, res) => {
     try {
         const result = await pool.query('SELECT id, name FROM shops');
@@ -256,158 +198,159 @@ app.get('/api/shops', async (req, res) => {
     }
 });
 
-// Ruta para agregar un nuevo producto y Scrapearlo AL INSTANTE
+// Agrega un producto y trata de scrapearlo al instante
 app.post('/api/products', verificarToken, async (req, res) => {
-    const { name, category, brand, shop_id, product_url } = req.body;
-    
+    const body = req.body || {};
+    const name = textoCorto(body.name, { min: 1, max: 255 });
+    const category = body.category ? textoCorto(body.category, { max: 100 }) : '';
+    const brand = body.brand ? textoCorto(body.brand, { max: 100 }) : '';
+    const shopId = parseId(body.shop_id);
+
+    if (!name || category === null || brand === null || !shopId) {
+        return res.status(400).json({ error: 'Datos inválidos: revisá nombre, categoría, marca y tienda' });
+    }
+
+    const client = await pool.connect();
     try {
-        // 1. Averiguamos el nombre de la tienda para saber qué scraper usar
-        const shopRes = await pool.query('SELECT name FROM shops WHERE id = $1', [shop_id]);
+        const shopRes = await client.query('SELECT name FROM shops WHERE id = $1', [shopId]);
+        if (shopRes.rows.length === 0) return res.status(400).json({ error: 'La tienda indicada no existe' });
         const shopName = shopRes.rows[0].name;
 
-        // 2. Insertamos el producto general
-        const productRes = await pool.query(
-            `INSERT INTO products (name, category, brand) VALUES ($1, $2, $3) RETURNING id`,
-            [name, category, brand]
-        );
-        const productId = productRes.rows[0].id;
+        const productUrl = validarUrlProducto(body.product_url, shopName);
+        if (!productUrl) {
+            return res.status(400).json({ error: `El enlace debe ser una URL https de ${shopName}` });
+        }
 
-        // 3. Lo vinculamos a la tienda y OBTENEMOS EL ID DEL LINK (fundamental)
-        const linkRes = await pool.query(
-            `INSERT INTO product_shop_links (product_id, shop_id, product_url) VALUES ($1, $2, $3) RETURNING id`,
-            [productId, shop_id, product_url]
-        );
-        const linkId = linkRes.rows[0].id;
+        // Producto + link en una transacción: o se crean los dos o ninguno
+        let linkId;
+        try {
+            await client.query('BEGIN');
+            const productRes = await client.query(
+                'INSERT INTO products (name, category, brand) VALUES ($1, $2, $3) RETURNING id',
+                [name, category || null, brand || null]
+            );
+            const linkRes = await client.query(
+                'INSERT INTO product_shop_links (product_id, shop_id, product_url) VALUES ($1, $2, $3) RETURNING id',
+                [productRes.rows[0].id, shopId, productUrl]
+            );
+            linkId = linkRes.rows[0].id;
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        }
 
-        // 4. 🔥 MAGIA REACTIVA: Ejecutamos el scraper acá mismo y esperamos a que termine
-        const currentPrice = await scrapeOnDemand(linkId, product_url, shopName, name);
+        // Espera el primer precio como máximo ESPERA_MAX_SCRAPE_MS. Si tarda más, responde igual
+        // y el scrapeo termina en segundo plano (scrapeOnDemand nunca lanza: captura sus errores).
+        const scrapeo = scrapeOnDemand(linkId, productUrl, shopName, name);
+        const price = await Promise.race([
+            scrapeo,
+            new Promise((resolve) => setTimeout(() => resolve(undefined), ESPERA_MAX_SCRAPE_MS))
+        ]);
 
-        res.status(201).json({ 
-            message: '✅ Producto agregado y scrapeado',
-            price: currentPrice
+        res.status(201).json({
+            message: price === undefined
+                ? '✅ Producto agregado. El precio se está buscando y aparecerá en unos instantes.'
+                : '✅ Producto agregado y scrapeado',
+            price: price ?? null
         });
     } catch (error) {
-        console.error('Error al guardar/scrapear producto:', error);
+        console.error('Error al guardar producto:', error);
         res.status(500).json({ error: 'Error al procesar la solicitud' });
+    } finally {
+        client.release();
     }
 });
-// Ruta para forzar el scrapeo de TODOS los productos
+
 app.post('/api/scrape-all', verificarToken, async (req, res) => {
     try {
         const actualizados = await scrapeAllProducts();
-        res.status(200).json({ 
-            message: `Scraping masivo completado. ${actualizados} precios actualizados.` 
-        });
+        res.status(200).json({ message: `Scraping masivo completado. ${actualizados} precios actualizados.` });
     } catch (error) {
+        if (error instanceof ScrapeEnCursoError) {
+            return res.status(409).json({ error: 'Ya hay una actualización en curso. Esperá a que termine.' });
+        }
         console.error('Error en el endpoint de scrape-all:', error);
         res.status(500).json({ error: 'Error al ejecutar la actualización masiva' });
     }
 });
-// Ruta para eliminar un producto y todo su historial
+
 app.delete('/api/products/:id', verificarToken, async (req, res) => {
-    const { id } = req.params;
-    
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'ID inválido' });
+
     try {
-        // Gracias al ON DELETE CASCADE de la base de datos, 
-        // borrar el producto limpia automáticamente la tabla de links y el historial.
-        await pool.query('DELETE FROM products WHERE id = $1', [id]);
-        
+        // ON DELETE CASCADE limpia links e historial
+        const result = await pool.query('DELETE FROM products WHERE id = $1', [id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Producto no encontrado' });
         res.status(200).json({ message: '✅ Producto eliminado exitosamente' });
     } catch (error) {
         console.error('Error al eliminar producto:', error);
         res.status(500).json({ error: 'Error al intentar eliminar el producto' });
     }
 });
-// Ruta para buscar en vivo el mejor precio en Mercado Libre
-// Ruta para buscar en vivo usando Playwright (Scraping de la web)
-app.get('/api/search/ml', verificarToken, async (req, res) => {
-    const { q } = req.query;
-    
-    if (!q) {
-        return res.status(400).json({ error: 'Falta el término de búsqueda' });
+
+// Búsqueda en vivo en Mercado Libre (abre un navegador: una sola a la vez y con límite por IP)
+let busquedaEnCurso = false;
+app.get('/api/search/ml', verificarToken, limitarBusquedas, async (req, res) => {
+    const q = textoCorto(req.query.q, { min: 2, max: 100 });
+    if (!q) return res.status(400).json({ error: 'El término de búsqueda debe tener entre 2 y 100 caracteres' });
+
+    if (busquedaEnCurso) {
+        return res.status(429).json({ error: 'Ya hay una búsqueda en curso. Probá de nuevo en unos segundos.' });
     }
 
-    let browser;
+    busquedaEnCurso = true;
     try {
-        console.log(`🔎 Cazador (Playwright) buscando: "${q}"...`);
-        
-        // 1. Levantamos el navegador invisible
-        browser = await chromium.launch({ headless: true });
-        const page = await browser.newPage({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        });
-
-        // 2. Transformamos el texto (ej: "Aula F75") al formato de URL de ML ("Aula-F75")
-        const searchUrl = `https://listado.mercadolibre.com.ar/${q.trim().replace(/\s+/g, '-')}`;
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
-
-        // 3. Buscamos la primera tarjeta de producto en el HTML
-        const firstResult = await page.$('.ui-search-layout__item');
-
-        if (firstResult) {
-            // Extraemos título, link, precio e imagen
-            // Le tiramos una red con todas las combinaciones posibles que usa Mercado Libre
-            const title = await firstResult.evaluate((elemento) => {
-                const nodoTitulo = elemento.querySelector('h2, h3, .poly-component__title, .ui-search-item__title');
-                if (nodoTitulo && nodoTitulo.innerText) return nodoTitulo.innerText.trim();
-                
-                // Si falla lo anterior, leemos el texto directamente del enlace
-                const nodoEnlace = elemento.querySelector('a.ui-search-link');
-                if (nodoEnlace && nodoEnlace.innerText) return nodoEnlace.innerText.trim();
-                
-                return 'Sin título';
-            }).catch(() => 'Sin título');
-            // Le decimos que agarre el PRIMER enlace <a> que encuentre adentro de la tarjeta, sin importar qué clase tenga
-            const link = await firstResult.evaluate((elemento) => {
-                const nodoEnlace = elemento.querySelector('a');
-                return nodoEnlace && nodoEnlace.href ? nodoEnlace.href : '';
-            }).catch(() => '');
-            // Extraemos el precio real ignorando los tachados y las cuotas
-            const price = await firstResult.evaluate((elemento) => {
-                // Agarramos todos los números de precio de la tarjeta
-                const fracciones = Array.from(elemento.querySelectorAll('.andes-money-amount__fraction'));
-                
-                for (let frac of fracciones) {
-                    // Si el número está dentro de una etiqueta <s> (tachado) o tiene clase strikethrough, lo ignoramos
-                    if (frac.closest('s') || frac.closest('[class*="strikethrough"]')) continue;
-                    
-                    // Si el número está en la sección de cuotas (installment), lo ignoramos
-                    if (frac.closest('[class*="installment"]')) continue;
-                    
-                    // El primer número que sobreviva a estos filtros es el precio de lista real
-                    return parseInt(frac.innerText.replace(/\./g, ''));
-                }
-                return 0;
-            }).catch(() => 0);
-            
-            // ML usa lazy-loading para las imágenes. Si no tiene 'src' real, buscamos en 'data-src'
-            let thumbnail = await firstResult.$eval('img', el => el.getAttribute('src')).catch(() => '');
-            if (thumbnail && thumbnail.includes('data:image')) {
-                thumbnail = await firstResult.$eval('img', el => el.getAttribute('data-src')).catch(() => thumbnail);
-            }
-
-            res.status(200).json({
-                found: true,
-                product: { title, price, link, thumbnail }
-            });
-        } else {
-            res.status(200).json({ found: false, message: 'No se encontraron resultados' });
-        }
-
+        console.log(`🔎 Cazador buscando: "${q}"...`);
+        const product = await buscarEnMercadoLibre(q);
+        if (!product) return res.status(200).json({ found: false, message: 'No se encontraron resultados' });
+        res.status(200).json({ found: true, product });
     } catch (error) {
-        console.error('❌ Error en el Cazador Playwright:', error);
-        res.status(500).json({ error: 'Error al scrapear Mercado Libre' });
+        console.error('❌ Error en el Cazador:', error.message);
+        res.status(500).json({ error: 'Error al buscar en Mercado Libre' });
     } finally {
-        // MUY IMPORTANTE: Cerramos el navegador siempre, haya error o no
-        if (browser) await browser.close();
+        busquedaEnCurso = false;
     }
 });
+
 // ==========================================
-// INICIAR SERVIDOR
+// Arranque
 // ==========================================
-app.listen(PORT, () => {
-    console.log(`=========================================`);
-    console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
-    console.log(`🔗 Endpoint de prueba: http://localhost:${PORT}/api/products`);
-    console.log(`=========================================`);
-});
+function programarCron() {
+    if (process.env.ENABLE_CRON === 'false') {
+        console.log('⏰ Cron desactivado (ENABLE_CRON=false).');
+        return;
+    }
+    // 12:00 y 17:00 hora Argentina, sin depender de la zona horaria del servidor
+    cron.schedule('0 12,17 * * *', async () => {
+        console.log('⏰ [CRON] Iniciando actualización automática...');
+        try {
+            const actualizados = await scrapeAllProducts();
+            console.log(`✅ [CRON] ${actualizados} productos actualizados.`);
+        } catch (error) {
+            if (error instanceof ScrapeEnCursoError) {
+                console.log('⏭️ [CRON] Ya había una actualización en curso; se omite esta corrida.');
+            } else {
+                console.error('❌ [CRON] Error en la actualización automática:', error.message);
+            }
+        }
+    }, { timezone: 'America/Argentina/Buenos_Aires' });
+}
+
+async function iniciar() {
+    try {
+        await ensureDbSchema(pool); // una sola vez al arrancar (antes se ejecutaba en cada request)
+        console.log('✅ Esquema de base de datos verificado.');
+    } catch (error) {
+        console.error('❌ No se pudo verificar la base de datos:', error.message);
+        process.exit(1);
+    }
+
+    app.listen(PORT, () => {
+        console.log(`🚀 Servidor Express corriendo en el puerto ${PORT}`);
+        programarCron();
+    });
+}
+
+iniciar();

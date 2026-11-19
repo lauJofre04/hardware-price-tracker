@@ -1,5 +1,5 @@
 const { chromium } = require('playwright');
-const { parsePriceText, isValidPriceCandidate } = require('./src/services/scraperServices');
+const { parsePriceText, isValidPriceCandidate } = require('../src/services/priceParser');
 
 (async () => {
   const url = 'https://compragamer.com/producto/Placa_de_Video_Asrock_Radeon_RX_7600_8GB_GDDR6_Challenger_OC_14722?sort=lower_price&cate=62';
