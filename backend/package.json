@@ -4,9 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "init-db": "node src/scripts/init-db.js",
+    "crear-admin": "node scripts/crearAdmin.js"
   },
   "keywords": [],
   "author": "",
@@ -19,11 +21,13 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
     "playwright": "^1.58.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

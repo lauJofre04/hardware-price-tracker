@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const pool = require('./src/config/db'); // Fijate que esta ruta apunte bien a tu archivo de DB
+const pool = require('../src/config/db'); // Fijate que esta ruta apunte bien a tu archivo de DB
 
 async function generarAdmin() {
     // Credenciales por variables de entorno: ADMIN_USER (opcional) y ADMIN_PASSWORD (obligatoria, mínimo 12 caracteres)
