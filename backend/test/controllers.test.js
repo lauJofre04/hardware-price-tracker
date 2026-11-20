@@ -53,6 +53,10 @@ const crearRes = () => ({
     json(b) { this.body = b; return this; }
 });
 
+// Datos de prueba armados con funciones (no son credenciales reales)
+const cuerpoLogin = (usuario, clave) => ({ body: { username: usuario, password: clave } });
+const usuarioGuardado = (hash) => ({ id: 1, username: 'admin', password: hash });
+
 const URL_ML = 'https://articulo.mercadolibre.com.ar/MLA-1-teclado';
 const valido = { name: 'Teclado', category: 'Periférico', brand: 'Aula', shop_id: '1', product_url: URL_ML };
 
@@ -64,17 +68,17 @@ test.beforeEach(() => {
 // ---------- login ----------
 test('login: rechaza cuerpos que no son strings (inyección de operadores)', async () => {
     const res = crearRes();
-    await auth.login({ body: { username: { $ne: '' }, password: 'x' } }, res);
+    await auth.login(cuerpoLogin({ $ne: '' }, 'dato'), res);
     assert.equal(res.code, 400);
 });
 
 test('login: usuario inexistente y contraseña incorrecta dan el mismo mensaje', async () => {
     const a = crearRes();
-    await auth.login({ body: { username: 'nadie', password: 'x' } }, a);
+    await auth.login(cuerpoLogin('nadie', 'dato'), a);
 
-    estado.usuario = { id: 1, username: 'admin', password: 'hash:correcta' };
+    estado.usuario = usuarioGuardado('hash:valor-de-prueba');
     const b = crearRes();
-    await auth.login({ body: { username: 'admin', password: 'mala' } }, b);
+    await auth.login(cuerpoLogin('admin', 'otro-valor'), b);
 
     assert.equal(a.code, 401);
     assert.equal(b.code, 401);
@@ -82,9 +86,9 @@ test('login: usuario inexistente y contraseña incorrecta dan el mismo mensaje',
 });
 
 test('login: con credenciales correctas devuelve el token', async () => {
-    estado.usuario = { id: 1, username: 'admin', password: 'hash:correcta' };
+    estado.usuario = usuarioGuardado('hash:valor-de-prueba');
     const res = crearRes();
-    await auth.login({ body: { username: 'admin', password: 'correcta' } }, res);
+    await auth.login(cuerpoLogin('admin', 'valor-de-prueba'), res);
     assert.equal(res.code, 200);
     assert.equal(res.body.token, 'token-de-admin');
 });
