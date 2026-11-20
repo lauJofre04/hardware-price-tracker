@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Toaster, toast } from 'sonner';
 import { useAuth } from './hooks/useAuth';
 import { useProducts } from './hooks/useProducts';
@@ -10,23 +10,27 @@ import ProductForm from './components/ProductForm';
 import ProductCard from './components/ProductCard';
 import SearchFilter from './components/SearchFilter';
 import BudgetBar from './components/BudgetBar';
+import Pagination from './components/Pagination';
 
 function App() {
   const { token, login, logout, authFetch } = useAuth();
-  const { products, shops, loading, error, refresh, crear, eliminar, actualizarUrl, alternarSeleccion, scrapeAll } =
-    useProducts({ token, authFetch });
+  const {
+    products, shops, loading, error, refresh, crear, eliminar, actualizarUrl, alternarSeleccion, scrapeAll,
+    page, setPage, totalPages, total, budget, setSearch
+  } = useProducts({ token, authFetch });
 
   const [showForm, setShowForm] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [isScrapingAll, setIsScrapingAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const isAdmin = token !== null;
+  // El filtro se aplica en el servidor: se espera a que termine de escribir
+  useEffect(() => {
+    const espera = setTimeout(() => setSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(espera);
+  }, [searchTerm, setSearch]);
 
-  const filteredProducts = useMemo(() => {
-    const termino = searchTerm.trim().toLowerCase();
-    return products.filter((p) => p.product_name.toLowerCase().includes(termino));
-  }, [products, searchTerm]);
+  const isAdmin = token !== null;
 
   const handleScrapeAll = async () => {
     setIsScrapingAll(true);
@@ -94,7 +98,7 @@ function App() {
               Reintentar
             </button>
           </div>
-        ) : filteredProducts.length === 0 ? (
+        ) : products.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
             {searchTerm.trim() ? (
               <>
@@ -107,7 +111,7 @@ function App() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProducts.map((product) => (
+            {products.map((product) => (
               <ProductCard
                 key={product.product_id}
                 product={product}
@@ -120,8 +124,10 @@ function App() {
           </div>
         )}
 
-        {/* El total del presupuesto cuenta todos los productos marcados, aunque el filtro los oculte */}
-        <BudgetBar products={products} />
+        <Pagination page={page} totalPages={totalPages} total={total} onChange={setPage} />
+
+        {/* El total del presupuesto cuenta todos los productos marcados, de cualquier página o filtro */}
+        <BudgetBar budget={budget} />
       </div>
     </div>
   );

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { apiFetch, leerError, type AuthFetch } from '../api';
-import type { NewProduct, Product, Shop } from '../types';
+import type { Budget, NewProduct, Product, ProductsPage, Shop } from '../types';
+
+const POR_PAGINA = 12;
 
 type Params = {
   token: string | null;
@@ -13,19 +15,44 @@ export function useProducts({ token, authFetch }: Params) {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [search, setSearchState] = useState('');
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [budget, setBudget] = useState<Budget>({ count: 0, total: 0 });
+
+  // Solo se aplica la respuesta de la última petición (escribir rápido dispara varias a la vez)
+  const ultimaPeticion = useRef(0);
 
   const refresh = useCallback(async () => {
+    const id = ++ultimaPeticion.current;
     try {
-      const res = await apiFetch('/api/products');
+      const params = new URLSearchParams({ page: String(page), limit: String(POR_PAGINA), q: search });
+      const res = await apiFetch(`/api/products?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setProducts((await res.json()) as Product[]);
+      const data = (await res.json()) as ProductsPage;
+      if (id !== ultimaPeticion.current) return;
+
+      setProducts(data.items);
+      setTotalPages(data.totalPages);
+      setTotal(data.total);
+      setBudget(data.budget);
       setError(null);
+      // Si la página pedida ya no existe (se borró el último producto), el backend devuelve la última
+      if (data.page !== page) setPage(data.page);
     } catch (e) {
+      if (id !== ultimaPeticion.current) return;
       console.error('Error conectando a la API:', e);
       setError('No se pudo conectar con la API. Si el servidor estaba dormido, probá de nuevo en unos segundos.');
     } finally {
-      setLoading(false);
+      if (id === ultimaPeticion.current) setLoading(false);
     }
+  }, [page, search]);
+
+  // Cambiar el filtro vuelve a la primera página
+  const setSearch = useCallback((texto: string) => {
+    setSearchState(texto);
+    setPage(1);
   }, []);
 
   useEffect(() => {
@@ -118,13 +145,17 @@ export function useProducts({ token, authFetch }: Params) {
           return;
         }
         const data = (await res.json()) as { is_selected: boolean };
+        const producto = products.find((p) => p.product_id === id);
+        const precio = Number(producto?.last_price);
+        const delta = data.is_selected ? 1 : -1;
         setProducts((prev) => prev.map((p) => (p.product_id === id ? { ...p, is_selected: data.is_selected } : p)));
+        setBudget((b) => ({ count: b.count + delta, total: b.total + (Number.isFinite(precio) ? delta * precio : 0) }));
       } catch (e) {
         console.error('Error al alternar selección:', e);
         toast.error('Error de conexión al actualizar la selección.');
       }
     },
-    [token, authFetch]
+    [token, authFetch, products]
   );
 
   const scrapeAll = useCallback(async (): Promise<void> => {
@@ -144,5 +175,8 @@ export function useProducts({ token, authFetch }: Params) {
     }
   }, [authFetch, refresh]);
 
-  return { products, shops, loading, error, refresh, crear, eliminar, actualizarUrl, alternarSeleccion, scrapeAll };
+  return {
+    products, shops, loading, error, refresh, crear, eliminar, actualizarUrl, alternarSeleccion, scrapeAll,
+    page, setPage, totalPages, total, budget, setSearch
+  };
 }

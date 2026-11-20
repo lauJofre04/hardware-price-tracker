@@ -5,9 +5,31 @@ const { validarUrlProducto, parseId, textoCorto } = require('../utils/validators
 
 const ESPERA_MAX_SCRAPE_MS = 20000; // cuánto espera POST /api/products al primer precio
 
+const LIMITE_POR_DEFECTO = 12;
+const LIMITE_MAXIMO = 50;
+
+// GET /api/products
+//   Sin parámetros: arreglo completo (formato original, para clientes que todavía no paginan).
+//   Con ?page=&limit=&q=: { items, page, limit, total, totalPages, budget }
 async function listar(req, res) {
     try {
-        res.json(await products.listar());
+        const { page, limit, q } = req.query;
+        if (page === undefined && limit === undefined && q === undefined) {
+            return res.json(await products.listar());
+        }
+
+        const pagina = page === undefined ? 1 : parseId(page);
+        const porPagina = limit === undefined ? LIMITE_POR_DEFECTO : parseId(limit);
+        const filtro = q === undefined ? '' : textoCorto(q, { max: 100 });
+        if (!pagina || !porPagina || porPagina > LIMITE_MAXIMO || filtro === null) {
+            return res.status(400).json({ error: `Parámetros inválidos: page ≥ 1, limit entre 1 y ${LIMITE_MAXIMO}, q hasta 100 caracteres` });
+        }
+
+        const [resultado, budget] = await Promise.all([
+            products.listarPaginado({ page: pagina, limit: porPagina, q: filtro }),
+            products.presupuesto()
+        ]);
+        res.json({ ...resultado, budget });
     } catch (error) {
         console.error('Error al consultar productos:', error);
         res.status(500).json({ error: 'Error interno del servidor al obtener productos' });

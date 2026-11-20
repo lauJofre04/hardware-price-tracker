@@ -23,6 +23,8 @@ simular('../src/repositories/users', { buscarPorUsername: async () => estado.usu
 simular('../src/repositories/shops', { listar: async () => [], buscarPorId: async () => estado.tienda });
 simular('../src/repositories/products', {
     listar: async () => [],
+    listarPaginado: async (p) => (llamadas.push(['listarPaginado', p]), { items: [], page: p.page, limit: p.limit, total: 30, totalPages: 3 }),
+    presupuesto: async () => ({ count: 1, total: 100 }),
     alternarSeleccion: async () => (estado.existe ? estado.seleccion : null),
     linksDeProducto: async () => estado.links,
     actualizarUrlDeLink: async (...a) => llamadas.push(['actualizarUrlDeLink', ...a]),
@@ -51,6 +53,10 @@ const crearRes = () => ({
     json(b) { this.body = b; return this; }
 });
 
+// Datos de prueba armados con funciones (no son credenciales reales)
+const cuerpoLogin = (usuario, clave) => ({ body: { username: usuario, password: clave } });
+const usuarioGuardado = (hash) => ({ id: 1, username: 'admin', password: hash });
+
 const URL_ML = 'https://articulo.mercadolibre.com.ar/MLA-1-teclado';
 const valido = { name: 'Teclado', category: 'Periférico', brand: 'Aula', shop_id: '1', product_url: URL_ML };
 
@@ -62,17 +68,17 @@ test.beforeEach(() => {
 // ---------- login ----------
 test('login: rechaza cuerpos que no son strings (inyección de operadores)', async () => {
     const res = crearRes();
-    await auth.login({ body: { username: { $ne: '' }, password: 'x' } }, res);
+    await auth.login(cuerpoLogin({ $ne: '' }, 'dato'), res);
     assert.equal(res.code, 400);
 });
 
 test('login: usuario inexistente y contraseña incorrecta dan el mismo mensaje', async () => {
     const a = crearRes();
-    await auth.login({ body: { username: 'nadie', password: 'x' } }, a);
+    await auth.login(cuerpoLogin('nadie', 'dato'), a);
 
-    estado.usuario = { id: 1, username: 'admin', password: 'hash:correcta' };
+    estado.usuario = usuarioGuardado('hash:valor-de-prueba');
     const b = crearRes();
-    await auth.login({ body: { username: 'admin', password: 'mala' } }, b);
+    await auth.login(cuerpoLogin('admin', 'otro-valor'), b);
 
     assert.equal(a.code, 401);
     assert.equal(b.code, 401);
@@ -80,9 +86,9 @@ test('login: usuario inexistente y contraseña incorrecta dan el mismo mensaje',
 });
 
 test('login: con credenciales correctas devuelve el token', async () => {
-    estado.usuario = { id: 1, username: 'admin', password: 'hash:correcta' };
+    estado.usuario = usuarioGuardado('hash:valor-de-prueba');
     const res = crearRes();
-    await auth.login({ body: { username: 'admin', password: 'correcta' } }, res);
+    await auth.login(cuerpoLogin('admin', 'valor-de-prueba'), res);
     assert.equal(res.code, 200);
     assert.equal(res.body.token, 'token-de-admin');
 });
@@ -197,4 +203,31 @@ test('buscarEnML: valida la consulta y responde found:false sin resultados', asy
     await search.buscarEnML({ query: { q: 'teclado aula' } }, ok);
     assert.equal(ok.code, 200);
     assert.equal(ok.body.found, false);
+});
+
+// ---------- paginación ----------
+test('listar: sin parámetros devuelve el arreglo original; con parámetros, la página y el presupuesto', async () => {
+    const sin = crearRes();
+    await productos.listar({ query: {} }, sin);
+    assert.ok(Array.isArray(sin.body));
+
+    const con = crearRes();
+    await productos.listar({ query: { page: '2', limit: '5', q: 'aula' } }, con);
+    assert.equal(con.code, 200);
+    assert.deepEqual(llamadas.find((l) => l[0] === 'listarPaginado'), ['listarPaginado', { page: 2, limit: 5, q: 'aula' }]);
+    assert.deepEqual(con.body.budget, { count: 1, total: 100 });
+    assert.equal(con.body.totalPages, 3);
+});
+
+test('listar: usa valores por defecto y rechaza parámetros inválidos', async () => {
+    llamadas.length = 0;
+    const defecto = crearRes();
+    await productos.listar({ query: { page: '1' } }, defecto);
+    assert.deepEqual(llamadas.find((l) => l[0] === 'listarPaginado')[1], { page: 1, limit: 12, q: '' });
+
+    for (const query of [{ page: '0' }, { page: 'x' }, { limit: '51' }, { limit: '-2' }, { q: 'x'.repeat(101) }, { q: ['a', 'b'] }]) {
+        const res = crearRes();
+        await productos.listar({ query }, res);
+        assert.equal(res.code, 400, JSON.stringify(query));
+    }
 });

@@ -18,6 +18,57 @@ async function listar() {
     return rows;
 }
 
+// Escapa % _ \\ para que el texto del usuario se busque literal dentro de un ILIKE
+const escaparLike = (texto) => texto.replace(/[\\%_]/g, '\\$&');
+
+// Página de productos con filtro opcional por nombre. Si la página pedida supera el total
+// (por ejemplo, tras borrar el último producto de la última página) devuelve la última.
+async function listarPaginado({ page, limit, q = '' }) {
+    const patron = `%${escaparLike(q)}%`;
+    const { rows: [{ total }] } = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM products p
+         JOIN product_shop_links psl ON p.id = psl.product_id
+         WHERE p.name ILIKE $1 ESCAPE '\\'`,
+        [patron]
+    );
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const paginaActual = Math.min(page, totalPages);
+
+    const { rows: items } = await pool.query(
+        `SELECT
+            p.id as product_id,
+            p.name as product_name,
+            p.category,
+            p.brand,
+            s.name as shop_name,
+            psl.last_price,
+            psl.product_url,
+            p.is_selected
+         FROM products p
+         JOIN product_shop_links psl ON p.id = psl.product_id
+         JOIN shops s ON psl.shop_id = s.id
+         WHERE p.name ILIKE $1 ESCAPE '\\'
+         ORDER BY p.id
+         LIMIT $2 OFFSET $3`,
+        [patron, limit, (paginaActual - 1) * limit]
+    );
+
+    return { items, page: paginaActual, limit, total, totalPages };
+}
+
+// Total del presupuesto: todos los productos marcados, sin importar la página ni el filtro
+async function presupuesto() {
+    const { rows: [fila] } = await pool.query(
+        `SELECT COUNT(*)::int AS count, COALESCE(SUM(psl.last_price), 0)::float8 AS total
+         FROM products p
+         JOIN product_shop_links psl ON p.id = psl.product_id
+         WHERE p.is_selected = true`
+    );
+    return { count: fila.count, total: fila.total };
+}
+
 // Devuelve el nuevo estado, o null si el producto no existe
 async function alternarSeleccion(id) {
     const { rows } = await pool.query(
@@ -83,4 +134,4 @@ async function eliminar(id) {
     return result.rowCount > 0;
 }
 
-module.exports = { listar, alternarSeleccion, linksDeProducto, actualizarUrlDeLink, historial, crearConLink, eliminar };
+module.exports = { listar, listarPaginado, presupuesto, alternarSeleccion, linksDeProducto, actualizarUrlDeLink, historial, crearConLink, eliminar };
