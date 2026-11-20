@@ -29,3 +29,18 @@ export type NewProduct = {
   shop_id: string | number;
   product_url: string;
 };
+
+export type Budget = {
+  count: number;
+  total: number;
+};
+
+// Respuesta de GET /api/products?page=&limit=&q=
+export type ProductsPage = {
+  items: Product[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  budget: Budget;
+};

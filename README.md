@@ -111,6 +111,7 @@ Cubren el parser de precios, la validación de URLs (anti-SSRF), el formato de l
 - **Actualización automática:** un cron dentro del proceso corre a las 12:00 y 17:00 (hora de Argentina). Si ya hay una actualización en curso, la corrida se omite. En hosting gratuito que "duerme" el servicio puede no ejecutarse; en ese caso se puede disparar con `POST /api/scrape-all`.
 - **Alertas:** por defecto solo avisa cuando un precio **baja**.
 - **Seguridad:** endpoints de escritura con JWT, límite de intentos en el login y en el buscador, lista blanca de dominios para las URLs que scrapea el servidor.
+- **Paginación:** `GET /api/products?page=1&limit=12&q=texto` devuelve `{ items, page, limit, total, totalPages, budget }` (máximo 50 por página; `q` filtra por nombre en el servidor). Sin parámetros devuelve el arreglo completo, como antes.
 - **Sesión:** el token se guarda en `localStorage`; es una decisión consciente para un panel de un solo administrador.
 - **Uso responsable:** respetá los términos de uso de cada tienda y mantené frecuencias bajas de consulta.
 
