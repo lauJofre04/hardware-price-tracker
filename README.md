@@ -32,7 +32,13 @@ El sistema cuenta con un motor de scraping (HTTP + navegador headless para sitio
 ## 🏗️ Estructura del Proyecto
 
 El proyecto está dividido en dos servicios principales:
-1. `/backend`: Contiene la API REST, la lógica del scraper, la conexión a la base de datos y el bot de Telegram.
+1. `/backend`: API REST, scraper, base de datos y alertas de Telegram. Organización de `backend/src`:
+   - `routes/` define los endpoints y qué middleware usa cada uno.
+   - `controllers/` maneja la petición HTTP (validación, códigos de estado, respuestas).
+   - `repositories/` concentra el SQL; `config/` tiene la conexión y el esquema.
+   - `services/` tiene el scraper, el parser de precios, el buscador y Telegram.
+   - `middleware/` y `utils/` tienen autenticación, límite de intentos, CORS y validaciones.
+   - `app.js` arma Express; `index.js` valida el entorno, prepara la base, escucha el puerto y programa el cron.
 2. `/frontend`: Contiene la Single Page Application (SPA) que consume la API.
 
 ## 🚀 Instalación y Uso Local
