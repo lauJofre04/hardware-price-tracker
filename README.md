@@ -29,6 +29,22 @@ El sistema cuenta con un motor de scraping (HTTP + navegador headless para sitio
 - API de Telegram (consumida con `fetch`, sin librerías extra)
 - JWT & Bcrypt (Seguridad)
 
+## 🧭 Arquitectura
+
+```mermaid
+flowchart LR
+  U([Usuario]) --> FE[React + Vite<br/>Vercel]
+  FE -- "REST + JWT" --> API[Express 5<br/>Render]
+  API --> DB[(PostgreSQL<br/>Neon)]
+  CRON{{"node-cron<br/>12:00 y 17:00"}} --> SC[Scraper Playwright]
+  API --> SC
+  SC -- "lista blanca de dominios" --> SH[Mercado Libre<br/>Compra Gamer]
+  SC --> DB
+  SC -- "si el precio baja" --> TG[Telegram Bot]
+```
+
+Flujo de una actualización: el scraper abre cada URL (solo dominios permitidos), extrae el precio, lo guarda en `price_history` dentro de una transacción y, si bajó, envía la alerta.
+
 ## 🏗️ Estructura del Proyecto
 
 El proyecto está dividido en dos servicios principales:
