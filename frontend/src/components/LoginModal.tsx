@@ -30,23 +30,23 @@ export default function LoginModal({ onClose, onLogin }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 z-50 flex animate-aparecer items-center justify-center bg-ink-950/80 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="login-titulo"
     >
-      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm relative">
+      <div className="relative w-full max-w-sm animate-modal rounded-3xl border border-ink-700 bg-ink-900 p-8 shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+          className="absolute top-4 right-4 text-ink-500 transition-colors hover:text-ink-100"
           title="Cerrar"
           aria-label="Cerrar"
         >
           <CloseIcon />
         </button>
 
-        <h2 id="login-titulo" className="text-2xl font-bold mb-2 text-gray-800 text-center">Modo Administrador</h2>
-        <p className="text-sm text-gray-500 text-center mb-6">Ingresá para gestionar el radar.</p>
+        <h2 id="login-titulo" className="font-display text-2xl font-extrabold mb-2 text-center">Modo administrador</h2>
+        <p className="text-sm text-ink-400 text-center mb-6">Ingresá para gestionar tu radar.</p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
@@ -56,7 +56,7 @@ export default function LoginModal({ onClose, onLogin }: Props) {
             autoComplete="username"
             placeholder="Usuario"
             aria-label="Usuario"
-            className="border border-gray-300 p-3 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="campo"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
@@ -66,16 +66,16 @@ export default function LoginModal({ onClose, onLogin }: Props) {
             autoComplete="current-password"
             placeholder="Contraseña"
             aria-label="Contraseña"
-            className="border border-gray-300 p-3 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="campo"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 w-full bg-gray-900 hover:bg-black disabled:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+            className="btn btn-primario mt-2 w-full !py-3"
           >
-            {submitting ? 'Ingresando...' : 'Ingresar'}
+            {submitting ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
       </div>

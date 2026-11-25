@@ -2,42 +2,51 @@ type Props = {
   isAdmin: boolean;
   isScrapingAll: boolean;
   showForm: boolean;
+  total: number;
   onScrapeAll: () => void;
   onToggleForm: () => void;
   onLogout: () => void;
   onShowLogin: () => void;
 };
 
-export default function Header({ isAdmin, isScrapingAll, showForm, onScrapeAll, onToggleForm, onLogout, onShowLogin }: Props) {
+export default function Header({ isAdmin, isScrapingAll, showForm, total, onScrapeAll, onToggleForm, onLogout, onShowLogin }: Props) {
   return (
-    <header className="mb-8 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800">Monitor de Hardware 🚀</h1>
-        <p className="text-gray-500 mt-2">Rastreando precios en tiempo real para tu próximo setup.</p>
-      </div>
+    <header className="relative mb-10 animate-entrada">
+      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-ink-700 bg-ink-900/70 px-3 py-1 text-sm text-ink-400">
+            <span className="h-2 w-2 animate-pulso rounded-full bg-drop" aria-hidden="true" />
+            Precios actualizados dos veces por día
+          </p>
+          <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
+            Comprá hardware
+            <br />
+            <span className="text-amber">cuando está barato.</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-lg text-ink-400">
+            Seguimos el precio de {total > 0 ? `${total} productos` : 'tus productos'} en Mercado Libre y Compra Gamer, guardamos el historial y te avisamos por Telegram cuando bajan.
+          </p>
+        </div>
 
-      <div className="flex gap-3 items-center">
-        {isAdmin ? (
-          <>
-            <button
-              onClick={onScrapeAll}
-              disabled={isScrapingAll}
-              className={`font-bold py-2 px-4 rounded-lg transition-colors text-white ${isScrapingAll ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-            >
-              {isScrapingAll ? '⏳...' : '🔄 Forzar Actualización'}
+        <div className="flex flex-wrap items-center gap-3">
+          {isAdmin ? (
+            <>
+              <button onClick={onScrapeAll} disabled={isScrapingAll} className="btn btn-suave">
+                {isScrapingAll ? 'Actualizando…' : 'Actualizar precios'}
+              </button>
+              <button onClick={onToggleForm} className="btn btn-primario">
+                {showForm ? 'Cerrar' : 'Rastrear producto'}
+              </button>
+              <button onClick={onLogout} className="btn btn-peligro">
+                Salir
+              </button>
+            </>
+          ) : (
+            <button onClick={onShowLogin} className="btn btn-suave">
+              Entrar como admin
             </button>
-            <button onClick={onToggleForm} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
-              {showForm ? 'Cancelar' : '+ Rastrear'}
-            </button>
-            <button onClick={onLogout} className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg text-sm">
-              Salir
-            </button>
-          </>
-        ) : (
-          <button onClick={onShowLogin} className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-4 rounded-lg">
-            Iniciar Sesión (Admin)
-          </button>
-        )}
+          )}
+        </div>
       </div>
     </header>
   );
