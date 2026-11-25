@@ -24,16 +24,16 @@ export default function ProductForm({ shops, onSubmit }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow-md mb-8 border border-gray-200">
-      <h2 className="text-xl font-bold mb-4 text-gray-800">Agregar enlace al radar</h2>
+    <form onSubmit={handleSubmit} className="mb-8 animate-entrada rounded-2xl border border-ink-700 bg-ink-900 p-6">
+      <h2 className="font-display text-xl font-extrabold mb-4">Agregar producto al radar</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <input
           required
           type="text"
           maxLength={255}
-          placeholder="Nombre del producto (Ej: Monitor LG 24)"
+          placeholder="Nombre del producto (ej: Monitor LG 24)"
           aria-label="Nombre del producto"
-          className="border p-2 rounded w-full"
+          className="campo"
           value={form.name}
           onChange={(e) => cambiar('name', e.target.value)}
         />
@@ -43,9 +43,9 @@ export default function ProductForm({ shops, onSubmit }: Props) {
             required
             type="text"
             maxLength={100}
-            placeholder="Categoría (Ej: Monitor)"
+            placeholder="Categoría (ej: Monitor)"
             aria-label="Categoría"
-            className="border p-2 rounded w-1/2"
+            className="campo w-1/2"
             value={form.category}
             onChange={(e) => cambiar('category', e.target.value)}
           />
@@ -53,9 +53,9 @@ export default function ProductForm({ shops, onSubmit }: Props) {
             required
             type="text"
             maxLength={100}
-            placeholder="Marca (Ej: LG)"
+            placeholder="Marca (ej: LG)"
             aria-label="Marca"
-            className="border p-2 rounded w-1/2"
+            className="campo w-1/2"
             value={form.brand}
             onChange={(e) => cambiar('brand', e.target.value)}
           />
@@ -64,7 +64,7 @@ export default function ProductForm({ shops, onSubmit }: Props) {
         <select
           required
           aria-label="Tienda"
-          className="border p-2 rounded w-full bg-white"
+          className="campo"
           value={form.shop_id}
           onChange={(e) => cambiar('shop_id', e.target.value)}
         >
@@ -81,7 +81,7 @@ export default function ProductForm({ shops, onSubmit }: Props) {
           type="url"
           placeholder="URL del producto (https://...)"
           aria-label="URL del producto"
-          className="border p-2 rounded w-full"
+          className="campo"
           value={form.product_url}
           onChange={(e) => cambiar('product_url', e.target.value)}
         />
@@ -90,11 +90,9 @@ export default function ProductForm({ shops, onSubmit }: Props) {
       <button
         type="submit"
         disabled={submitting}
-        className={`mt-4 w-full font-bold py-2 px-4 rounded transition-colors text-white ${
-          submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
-        }`}
+        className="btn btn-primario mt-4 w-full"
       >
-        {submitting ? '🤖 Scrapeando precio en tiempo real...' : 'Guardar y Scrapear'}
+        {submitting ? 'Buscando el precio…' : 'Guardar y buscar precio'}
       </button>
     </form>
   );

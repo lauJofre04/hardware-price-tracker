@@ -68,13 +68,20 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 sm:p-8 pb-24">
-      <Toaster richColors position="top-right" />
-      <div className="max-w-6xl mx-auto">
+    <div className="relative min-h-screen overflow-x-clip px-4 pb-28 pt-10 sm:px-8 sm:pt-16">
+      {/* Resplandores de fondo que derivan lentamente */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -left-40 -top-40 h-[34rem] w-[34rem] animate-deriva rounded-full bg-amber/10 blur-3xl" />
+        <div className="absolute -right-32 top-1/3 h-[30rem] w-[30rem] animate-deriva rounded-full bg-drop/[0.07] blur-3xl [animation-delay:-9s]" />
+      </div>
+
+      <Toaster theme="dark" richColors position="top-right" />
+      <div className="mx-auto max-w-6xl">
         <Header
           isAdmin={isAdmin}
           isScrapingAll={isScrapingAll}
           showForm={showForm}
+          total={total}
           onScrapeAll={handleScrapeAll}
           onToggleForm={() => setShowForm((v) => !v)}
           onLogout={logout}
@@ -90,31 +97,36 @@ function App() {
         <SearchFilter value={searchTerm} onChange={setSearchTerm} />
 
         {loading ? (
-          <div className="text-center text-gray-500 font-semibold mt-20">Cargando componentes...</div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3" aria-label="Cargando componentes">
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i} className="esqueleto h-80" />
+            ))}
+          </div>
         ) : error ? (
-          <div className="text-center py-16 bg-white rounded-xl border border-dashed border-red-300">
-            <p className="text-red-600 mb-4">{error}</p>
-            <button onClick={() => void refresh()} className="bg-gray-900 hover:bg-gray-800 text-white font-bold py-2 px-4 rounded-lg">
+          <div className="animate-entrada rounded-2xl border border-dashed border-rise/40 bg-ink-900 py-16 text-center">
+            <p className="mb-4 text-rise">{error}</p>
+            <button onClick={() => void refresh()} className="btn btn-primario">
               Reintentar
             </button>
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-300">
+          <div className="animate-entrada rounded-2xl border border-dashed border-ink-700 bg-ink-900 py-16 text-center">
             {searchTerm.trim() ? (
               <>
-                <p className="text-gray-500 text-lg mb-2">No encontramos nada con "{searchTerm}" 🕵️‍♂️</p>
-                <p className="text-gray-400 text-sm">Probá con otras palabras o agregalo a tu radar.</p>
+                <p className="mb-2 text-lg text-ink-100">No encontramos nada con "{searchTerm}"</p>
+                <p className="text-sm text-ink-400">Probá con otras palabras o agregalo a tu radar.</p>
               </>
             ) : (
-              <p className="text-gray-500 text-lg">Todavía no hay productos en el radar.</p>
+              <p className="text-lg text-ink-400">Todavía no hay productos en el radar.</p>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map((product) => (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {products.map((product, i) => (
               <ProductCard
                 key={product.product_id}
                 product={product}
+                index={i}
                 isAdmin={isAdmin}
                 onToggleSelection={(id) => void alternarSeleccion(id)}
                 onDelete={handleDelete}

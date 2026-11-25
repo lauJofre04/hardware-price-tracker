@@ -7,15 +7,15 @@ type Props = {
 
 export default function SearchFilter({ value, onChange }: Props) {
   return (
-    <div className="mb-6 relative max-w-2xl mx-auto">
-      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+    <div className="group relative mb-8 max-w-2xl animate-entrada [animation-delay:120ms]">
+      <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-ink-500 transition-colors group-focus-within:text-amber">
         <SearchIcon />
       </div>
       <input
         type="text"
-        placeholder="Buscar producto en mi radar (ej: Aula F75, Monitor...)"
+        placeholder="Buscar en tu radar: Aula F75, monitor, SSD…"
         aria-label="Filtrar productos del radar"
-        className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm transition-all text-gray-700 bg-white"
+        className="campo !rounded-2xl !py-3.5 !pl-11"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

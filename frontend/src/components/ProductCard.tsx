@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { Product } from '../types';
+import { useCountUp } from '../hooks/useCountUp';
 import { formatPrice } from '../utils/format';
 import PriceChart from './PriceChart';
 import { EditIcon, TrashIcon } from './icons';
@@ -7,14 +9,19 @@ import { EditIcon, TrashIcon } from './icons';
 type Props = {
   product: Product;
   isAdmin: boolean;
+  index: number;
   onToggleSelection: (id: number) => void;
   onDelete: (id: number, nombre: string) => void;
   onUpdateUrl: (id: number, url: string) => Promise<boolean>;
 };
 
-export default function ProductCard({ product, isAdmin, onToggleSelection, onDelete, onUpdateUrl }: Props) {
+const botonIcono =
+  'rounded-full border border-ink-700 bg-ink-900/80 p-1.5 text-ink-400 backdrop-blur transition hover:scale-110 active:scale-95';
+
+export default function ProductCard({ product, isAdmin, index, onToggleSelection, onDelete, onUpdateUrl }: Props) {
   const [editing, setEditing] = useState(false);
   const [newUrl, setNewUrl] = useState('');
+  const precio = useCountUp(Number(product.last_price) || 0);
 
   const startEditing = () => {
     setNewUrl(product.product_url);
@@ -26,13 +33,16 @@ export default function ProductCard({ product, isAdmin, onToggleSelection, onDel
     if (await onUpdateUrl(product.product_id, newUrl)) setEditing(false);
   };
 
+  // Entrada escalonada: cada tarjeta aparece un poco después de la anterior
+  const retraso = { animationDelay: `${Math.min(index, 8) * 70}ms` } satisfies CSSProperties;
+
   return (
-    <div className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 border border-gray-100 relative">
+    <article className="tarjeta animate-entrada" style={retraso}>
       {isAdmin && (
-        <div className="absolute top-4 right-4 flex gap-2">
+        <div className="absolute right-4 top-4 z-10 flex gap-2">
           <button
             onClick={startEditing}
-            className="text-gray-400 hover:text-blue-500 transition-colors bg-white/80 rounded-full p-1"
+            className={`${botonIcono} hover:border-amber hover:text-amber`}
             title="Editar enlace"
             aria-label={`Editar enlace de ${product.product_name}`}
           >
@@ -40,7 +50,7 @@ export default function ProductCard({ product, isAdmin, onToggleSelection, onDel
           </button>
           <button
             onClick={() => onDelete(product.product_id, product.product_name)}
-            className="text-gray-400 hover:text-red-500 transition-colors bg-white/80 rounded-full p-1"
+            className={`${botonIcono} hover:border-rise hover:text-rise`}
             title="Eliminar producto"
             aria-label={`Eliminar ${product.product_name}`}
           >
@@ -50,63 +60,57 @@ export default function ProductCard({ product, isAdmin, onToggleSelection, onDel
       )}
 
       <div className="p-6">
-        <div className="flex justify-between items-start mb-4 pr-6">
+        <div className={`mb-4 flex items-start justify-between ${isAdmin ? 'pr-20' : ''}`}>
           {product.category ? (
-            <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded uppercase">{product.category}</span>
+            <span className="rounded-full border border-amber/30 bg-amber/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber">
+              {product.category}
+            </span>
           ) : (
             <span />
           )}
-          <span className="text-xs text-gray-400 font-medium">{product.brand}</span>
+          <span className="text-xs font-medium text-ink-500">{product.brand}</span>
         </div>
 
-        <label className="mb-3 flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+        <h2 className="mb-3 line-clamp-2 font-display text-lg font-bold leading-snug text-ink-100" title={product.product_name}>
+          {product.product_name}
+        </h2>
+
+        <label className="mb-4 flex cursor-pointer select-none items-center gap-2 text-sm text-ink-400 transition-colors hover:text-ink-100">
           <input
             type="checkbox"
             checked={product.is_selected}
             onChange={() => onToggleSelection(product.product_id)}
             disabled={!isAdmin}
-            className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+            className="h-4 w-4 cursor-pointer rounded border-ink-700 bg-ink-900 accent-amber disabled:cursor-not-allowed"
           />
           <span>Agregar al presupuesto</span>
         </label>
 
-        <h2 className="text-lg font-bold text-gray-800 mb-2 line-clamp-2" title={product.product_name}>
-          {product.product_name}
-        </h2>
-
-        <div className="mt-4 flex items-end justify-between">
+        <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-sm text-gray-500">Mejor precio en</p>
-            <p className="font-semibold text-gray-700">{product.shop_name}</p>
+            <p className="text-xs uppercase tracking-wider text-ink-500">Mejor precio en</p>
+            <p className="font-semibold text-ink-100">{product.shop_name}</p>
           </div>
-          <div className="text-right">
-            {product.last_price ? (
-              <p className="text-2xl font-black text-emerald-600">{formatPrice(product.last_price)}</p>
-            ) : (
-              <p className="text-sm font-bold text-orange-500">Esperando Scraper...</p>
-            )}
-          </div>
+          {product.last_price ? (
+            <p className="font-display text-3xl font-extrabold tabular-nums text-amber">{formatPrice(precio)}</p>
+          ) : (
+            <p className="animate-pulse text-sm font-bold text-ink-400">Esperando precio…</p>
+          )}
         </div>
 
         {product.last_price && <PriceChart productId={product.product_id} />}
 
         {editing ? (
-          <div className="mt-6 flex flex-col gap-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
-            <label className="text-xs font-bold text-gray-600" htmlFor={`url-${product.product_id}`}>
-              Nuevo enlace del producto:
+          <div className="mt-6 flex animate-aparecer flex-col gap-2 rounded-xl border border-ink-700 bg-ink-950/60 p-3">
+            <label className="text-xs font-bold text-ink-400" htmlFor={`url-${product.product_id}`}>
+              Nuevo enlace del producto
             </label>
-            <input
-              id={`url-${product.product_id}`}
-              type="url"
-              value={newUrl}
-              onChange={(e) => setNewUrl(e.target.value)}
-              className="w-full border p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="flex gap-2 mt-2">
-              <button onClick={saveUrl} className="w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 rounded text-sm transition-colors">
+            <input id={`url-${product.product_id}`} type="url" value={newUrl} onChange={(e) => setNewUrl(e.target.value)} className="campo !py-2 text-sm" />
+            <div className="mt-1 flex gap-2">
+              <button onClick={saveUrl} className="btn btn-primario flex-1 !py-1.5 text-sm">
                 Guardar
               </button>
-              <button onClick={() => setEditing(false)} className="w-1/2 bg-gray-400 hover:bg-gray-500 text-white font-bold py-1.5 rounded text-sm transition-colors">
+              <button onClick={() => setEditing(false)} className="btn btn-suave flex-1 !py-1.5 text-sm">
                 Cancelar
               </button>
             </div>
@@ -116,12 +120,13 @@ export default function ProductCard({ product, isAdmin, onToggleSelection, onDel
             href={product.product_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-6 block w-full text-center bg-gray-900 hover:bg-gray-800 text-white font-medium py-2 px-4 rounded transition-colors"
+            className="btn btn-suave group mt-6 flex w-full items-center justify-center gap-2 text-center hover:!border-amber hover:!text-amber"
           >
             Ver en la tienda
+            <span aria-hidden="true" className="transition-transform duration-300 group-hover:translate-x-1">→</span>
           </a>
         )}
       </div>
-    </div>
+    </article>
   );
 }

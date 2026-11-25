@@ -1,1 +1,132 @@
 @import "tailwindcss";
+
+/* Sistema visual: tinta azulada + ámbar (el precio es lo importante) */
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink-950: #0b0f1a;
+  --color-ink-900: #121827;
+  --color-ink-800: #1a2236;
+  --color-ink-700: #263049;
+  --color-ink-500: #5d6a8a;
+  --color-ink-400: #8a95b0;
+  --color-ink-100: #e6eaf4;
+  --color-amber: #f5b83d;
+  --color-amber-dim: #c78f1f;
+  --color-drop: #38d9a9;
+  --color-rise: #ff7a6b;
+
+  --animate-entrada: entrada 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-aparecer: aparecer 0.35s ease-out both;
+  --animate-modal: modal 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-subir: subir 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pulso: pulso 2s ease-in-out infinite;
+  --animate-brillo: brillo 1.6s linear infinite;
+  --animate-deriva: deriva 18s ease-in-out infinite alternate;
+
+  @keyframes entrada {
+    from { opacity: 0; transform: translateY(18px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes aparecer {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes modal {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes subir {
+    from { transform: translateY(100%); }
+    to { transform: none; }
+  }
+  @keyframes pulso {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(56 217 169 / 0.55); }
+    50% { box-shadow: 0 0 0 6px rgb(56 217 169 / 0); }
+  }
+  @keyframes brillo {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+  @keyframes deriva {
+    from { transform: translate3d(-4%, -2%, 0) scale(1); }
+    to { transform: translate3d(4%, 3%, 0) scale(1.12); }
+  }
+}
+
+@layer base {
+  html { color-scheme: dark; }
+  body {
+    background: var(--color-ink-950);
+    color: var(--color-ink-100);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .campo {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-ink-700);
+    background: var(--color-ink-900);
+    padding: 0.7rem 0.9rem;
+    color: var(--color-ink-100);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .campo::placeholder { color: var(--color-ink-500); }
+  .campo:focus {
+    outline: none;
+    border-color: var(--color-amber);
+    box-shadow: 0 0 0 3px rgb(245 184 61 / 0.18);
+  }
+  .btn {
+    border-radius: 0.75rem;
+    padding: 0.6rem 1.1rem;
+    font-weight: 600;
+    transition: transform 0.15s, background-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.96); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-primario { background: var(--color-amber); color: var(--color-ink-950); }
+  .btn-primario:hover:not(:disabled) { box-shadow: 0 0 24px rgb(245 184 61 / 0.35); }
+  .btn-suave { background: var(--color-ink-800); color: var(--color-ink-100); border: 1px solid var(--color-ink-700); }
+  .btn-suave:hover:not(:disabled) { border-color: var(--color-ink-500); }
+  .btn-peligro { background: transparent; color: var(--color-rise); border: 1px solid rgb(255 122 107 / 0.4); }
+  .btn-peligro:hover:not(:disabled) { background: rgb(255 122 107 / 0.1); }
+
+  /* Tarjeta con borde que se enciende al pasar el mouse */
+  .tarjeta {
+    position: relative;
+    border-radius: 1.25rem;
+    border: 1px solid var(--color-ink-700);
+    background: linear-gradient(160deg, var(--color-ink-800), var(--color-ink-900));
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s, box-shadow 0.3s;
+  }
+  .tarjeta:hover {
+    transform: translateY(-4px);
+    border-color: rgb(245 184 61 / 0.55);
+    box-shadow: 0 18px 40px -18px rgb(245 184 61 / 0.35);
+  }
+
+  .esqueleto {
+    border-radius: 1.25rem;
+    border: 1px solid var(--color-ink-800);
+    background: linear-gradient(100deg, var(--color-ink-900) 30%, var(--color-ink-800) 50%, var(--color-ink-900) 70%);
+    background-size: 200% 100%;
+    animation: var(--animate-brillo);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

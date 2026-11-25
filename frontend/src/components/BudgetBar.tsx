@@ -8,12 +8,12 @@ export default function BudgetBar({ budget }: { budget: Budget }) {
   const plural = budget.count === 1 ? '' : 's';
 
   return (
-    <div className="fixed bottom-0 left-0 w-full bg-gray-900 text-white p-4 shadow-lg z-40">
-      <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-        <p className="font-semibold">
-          {budget.count} producto{plural} seleccionado{plural} para el presupuesto
+    <div className="fixed inset-x-0 bottom-0 z-40 animate-subir border-t border-amber/30 bg-ink-900/85 p-4 backdrop-blur-md">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-1 sm:flex-row">
+        <p className="text-ink-400">
+          {budget.count} producto{plural} en tu presupuesto
         </p>
-        <p className="text-lg font-bold">Total: {formatCurrency(budget.total)}</p>
+        <p className="font-display text-2xl font-extrabold tabular-nums text-amber">{formatCurrency(budget.total)}</p>
       </div>
     </div>
   );
